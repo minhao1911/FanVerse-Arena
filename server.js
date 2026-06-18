@@ -67,6 +67,14 @@ io.on('connection', (socket) => {
     console.log(`[Chat] Room ${data.roomId} — ${data.authorName}: ${data.text}`);
   });
 
+  socket.on('typing:start', (data) => {
+    socket.broadcast.emit('typing:start', data);
+  });
+
+  socket.on('typing:stop', (data) => {
+    socket.broadcast.emit('typing:stop', data);
+  });
+
   socket.on('disconnect', () => {
     connectedUsers.delete(socket.id);
     io.emit('presence:update', { onlineCount: connectedUsers.size });

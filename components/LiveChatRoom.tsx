@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +27,13 @@ export interface ChatMessage {
   authorLevel: number;
   text: string;
   createdAt: string;
+}
+
+interface TypingUser {
+  userId: string;
+  username: string;
+  flag: string;
+  roomId: string;
 }
 
 interface Props {
@@ -53,13 +62,90 @@ const SEED_MESSAGES: Record<string, ChatMessage[]> = {
   ],
 };
 
+function TypingDots() {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const useNative = Platform.OS !== 'web';
+    const animate = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: -4, duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: useNative }),
+          Animated.timing(dot, { toValue: 0, duration: 280, easing: Easing.in(Easing.quad), useNativeDriver: useNative }),
+          Animated.delay(600 - delay),
+        ])
+      );
+
+    const a1 = animate(dot1, 0);
+    const a2 = animate(dot2, 140);
+    const a3 = animate(dot3, 280);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, []);
+
+  return (
+    <View style={dotStyles.row}>
+      {[dot1, dot2, dot3].map((dot, i) => (
+        <Animated.View key={i} style={[dotStyles.dot, { transform: [{ translateY: dot }] }]} />
+      ))}
+    </View>
+  );
+}
+
+const dotStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 2 },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#9ca3af' },
+});
+
+function TypingIndicator({ typers }: { typers: TypingUser[] }) {
+  const colors = useColors();
+  if (typers.length === 0) return null;
+
+  const label =
+    typers.length === 1
+      ? `${typers[0].flag} ${typers[0].username} is typing`
+      : typers.length === 2
+      ? `${typers[0].flag} ${typers[0].username} & ${typers[1].username} are typing`
+      : `${typers[0].flag} ${typers[0].username} & ${typers.length - 1} others are typing`;
+
+  return (
+    <View style={[indicatorStyles.row, { backgroundColor: colors.cardAlt }]}>
+      <TypingDots />
+      <Text style={[indicatorStyles.label, { color: colors.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+const indicatorStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  label: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    fontStyle: 'italic',
+  },
+});
+
 export default function LiveChatRoom({ roomId, roomName }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(SEED_MESSAGES[roomId] ?? []);
   const [inputText, setInputText] = useState('');
+  const [typers, setTypers] = useState<TypingUser[]>([]);
   const listRef = useRef<FlatList>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
 
   useEffect(() => {
     const socket = getSocket();
@@ -72,15 +158,66 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
       });
     };
 
+    const handleTypingStart = (data: TypingUser) => {
+      if (data.roomId !== roomId || data.userId === user?.id) return;
+      setTypers(prev => {
+        if (prev.find(t => t.userId === data.userId)) return prev;
+        return [...prev, data];
+      });
+    };
+
+    const handleTypingStop = (data: { userId: string; roomId: string }) => {
+      if (data.roomId !== roomId) return;
+      setTypers(prev => prev.filter(t => t.userId !== data.userId));
+    };
+
     socket.on('receive_chat_message', handleIncoming);
+    socket.on('typing:start', handleTypingStart);
+    socket.on('typing:stop', handleTypingStop);
+
     return () => {
       socket.off('receive_chat_message', handleIncoming);
+      socket.off('typing:start', handleTypingStart);
+      socket.off('typing:stop', handleTypingStop);
     };
-  }, [roomId]);
+  }, [roomId, user?.id]);
+
+  const emitTypingStop = () => {
+    if (isTypingRef.current && user) {
+      emitEvent('typing:stop', { userId: user.id, roomId });
+      isTypingRef.current = false;
+    }
+  };
+
+  const handleChangeText = (text: string) => {
+    setInputText(text);
+
+    if (!user) return;
+
+    if (text.length > 0) {
+      if (!isTypingRef.current) {
+        isTypingRef.current = true;
+        emitEvent('typing:start', {
+          userId: user.id,
+          username: user.username,
+          flag: user.teamFlag ?? '🌍',
+          roomId,
+        });
+      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(emitTypingStop, 2500);
+    } else {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      emitTypingStop();
+    }
+  };
 
   const handleSend = () => {
     if (!inputText.trim() || !user) return;
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    emitTypingStop();
 
     const msg: ChatMessage = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
@@ -122,11 +259,11 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
         ]}>
           {!isGrouped && !isOwn && (
             <View style={styles.bubbleHeader}>
-              <Text style={[styles.authorName, { color: isOwn ? '#000' : colors.foreground }]}>
+              <Text style={[styles.authorName, { color: colors.foreground }]}>
                 {item.authorName}
               </Text>
-              <View style={[styles.lvPill, { backgroundColor: isOwn ? 'rgba(0,0,0,0.15)' : colors.cardAlt }]}>
-                <Text style={[styles.lvText, { color: isOwn ? '#000' : colors.muted }]}>Lv {item.authorLevel}</Text>
+              <View style={[styles.lvPill, { backgroundColor: colors.cardAlt }]}>
+                <Text style={[styles.lvText, { color: colors.muted }]}>Lv {item.authorLevel}</Text>
               </View>
             </View>
           )}
@@ -153,7 +290,6 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 0}
     >
-      {/* Live indicator */}
       <View style={[styles.liveBar, { backgroundColor: colors.cardAlt, borderBottomColor: colors.border }]}>
         <View style={styles.liveDot} />
         <Text style={[styles.liveText, { color: colors.muted }]}>Live War Room</Text>
@@ -169,7 +305,6 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
         </View>
       </View>
 
-      {/* Message list */}
       <FlatList
         ref={listRef}
         data={messages}
@@ -187,7 +322,8 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
         )}
       />
 
-      {/* Input bar */}
+      <TypingIndicator typers={typers} />
+
       <View style={[
         styles.inputBar,
         {
@@ -201,7 +337,7 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
           <TextInput
             style={[styles.input, { color: colors.foreground }]}
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={handleChangeText}
             placeholder="Drop your take..."
             placeholderTextColor={colors.muted}
             returnKeyType="send"
