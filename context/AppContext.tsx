@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSocket, emitEvent } from '../utils/socket';
 
 export interface Group {
   id: string;
@@ -78,6 +79,7 @@ interface AppContextValue {
   predictions: Prediction[];
   leaderboard: LeaderboardEntry[];
   comments: Record<string, MatchComment[]>;
+  onlineCount: number;
   createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => Promise<void>;
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => void;
@@ -273,6 +275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [debates, setDebates] = useState<DebatePost[]>(SAMPLE_DEBATES);
   const [predictions, setPredictions] = useState<Prediction[]>(SAMPLE_PREDICTIONS);
   const [comments, setComments] = useState<Record<string, MatchComment[]>>(SAMPLE_COMMENTS);
+  const [onlineCount, setOnlineCount] = useState(0);
   const leaderboard = SAMPLE_LEADERBOARD;
 
   useEffect(() => {
@@ -292,6 +295,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
     });
+
+    const socket = getSocket();
+
+    socket.on('presence:update', ({ onlineCount: count }: { onlineCount: number }) => {
+      setOnlineCount(count);
+    });
+
+    socket.on('debate:new', (debate: DebatePost) => {
+      setDebates(prev => {
+        if (prev.find(d => d.id === debate.id)) return prev;
+        return [debate, ...prev];
+      });
+    });
+
+    socket.on('debate:vote', ({ debateId, vote, upvotes, downvotes }: { debateId: string; vote: 'up' | 'down'; upvotes: number; downvotes: number }) => {
+      setDebates(prev => prev.map(d =>
+        d.id === debateId ? { ...d, upvotes, downvotes } : d
+      ));
+    });
+
+    socket.on('comment:new', (comment: MatchComment) => {
+      setComments(prev => {
+        const existing = prev[comment.matchId] ?? [];
+        if (existing.find(c => c.id === comment.id)) return prev;
+        return { ...prev, [comment.matchId]: [comment, ...existing] };
+      });
+    });
+
+    socket.on('comment:like', ({ matchId, commentId, likes }: { matchId: string; commentId: string; likes: number }) => {
+      setComments(prev => ({
+        ...prev,
+        [matchId]: (prev[matchId] ?? []).map(c =>
+          c.id === commentId ? { ...c, likes } : c
+        ),
+      }));
+    });
+
+    socket.on('group:memberUpdate', ({ groupId, delta }: { groupId: string; delta: number }) => {
+      setGroups(prev => prev.map(g =>
+        g.id === groupId ? { ...g, memberCount: Math.max(0, g.memberCount + delta) } : g
+      ));
+    });
+
+    return () => {
+      socket.off('presence:update');
+      socket.off('debate:new');
+      socket.off('debate:vote');
+      socket.off('comment:new');
+      socket.off('comment:like');
+      socket.off('group:memberUpdate');
+    };
   }, []);
 
   const createGroup = async (groupData: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => {
@@ -309,15 +363,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const joinGroup = (groupId: string) => {
-    setGroups(prev => prev.map(g =>
-      g.id === groupId ? { ...g, isJoined: !g.isJoined, memberCount: g.isJoined ? g.memberCount - 1 : g.memberCount + 1 } : g
-    ));
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      const joining = !g.isJoined;
+      emitEvent('group:join', { groupId, delta: joining ? 1 : -1 });
+      return { ...g, isJoined: joining, memberCount: joining ? g.memberCount + 1 : g.memberCount - 1 };
+    }));
   };
 
   const leaveGroup = (groupId: string) => {
-    setGroups(prev => prev.map(g =>
-      g.id === groupId ? { ...g, isJoined: false, memberCount: Math.max(0, g.memberCount - 1) } : g
-    ));
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      emitEvent('group:join', { groupId, delta: -1 });
+      return { ...g, isJoined: false, memberCount: Math.max(0, g.memberCount - 1) };
+    }));
   };
 
   const addDebate = (debateData: Omit<DebatePost, 'id' | 'createdAt' | 'upvotes' | 'downvotes' | 'commentCount'>) => {
@@ -331,6 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     const updated = [newDebate, ...debates];
     setDebates(updated);
+    emitEvent('debate:new', newDebate);
     AsyncStorage.setItem(DEBATES_KEY, JSON.stringify(updated.filter(d => !SAMPLE_DEBATES.find(s => s.id === d.id))));
   };
 
@@ -338,13 +398,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebates(prev => prev.map(d => {
       if (d.id !== debateId) return d;
       const prev_vote = d.userVote;
-      if (prev_vote === vote) return { ...d, userVote: null, upvotes: vote === 'up' ? d.upvotes - 1 : d.upvotes, downvotes: vote === 'down' ? d.downvotes - 1 : d.downvotes };
-      return {
-        ...d,
-        userVote: vote,
-        upvotes: vote === 'up' ? d.upvotes + 1 : (prev_vote === 'up' ? d.upvotes - 1 : d.upvotes),
-        downvotes: vote === 'down' ? d.downvotes + 1 : (prev_vote === 'down' ? d.downvotes - 1 : d.downvotes),
-      };
+      let upvotes = d.upvotes;
+      let downvotes = d.downvotes;
+      let userVote: 'up' | 'down' | null;
+      if (prev_vote === vote) {
+        userVote = null;
+        if (vote === 'up') upvotes -= 1; else downvotes -= 1;
+      } else {
+        userVote = vote;
+        if (vote === 'up') { upvotes += 1; if (prev_vote === 'down') downvotes -= 1; }
+        else { downvotes += 1; if (prev_vote === 'up') upvotes -= 1; }
+      }
+      emitEvent('debate:vote', { debateId, vote: userVote, upvotes, downvotes });
+      return { ...d, userVote, upvotes, downvotes };
     }));
   };
 
@@ -352,6 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPredictions(prev => prev.map(p =>
       p.id === predictionId ? { ...p, userPrediction: { home, away } } : p
     ));
+    emitEvent('prediction:submit', { predictionId, home, away });
   };
 
   const addComment = (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => {
@@ -371,23 +438,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...prev,
       [matchId]: [newComment, ...(prev[matchId] ?? [])],
     }));
+    emitEvent('comment:new', newComment);
   };
 
   const likeComment = (matchId: string, commentId: string) => {
-    setComments(prev => ({
-      ...prev,
-      [matchId]: (prev[matchId] ?? []).map(c =>
-        c.id === commentId
-          ? { ...c, likes: c.userLiked ? c.likes - 1 : c.likes + 1, userLiked: !c.userLiked }
-          : c
-      ),
-    }));
+    setComments(prev => {
+      const updated = {
+        ...prev,
+        [matchId]: (prev[matchId] ?? []).map(c => {
+          if (c.id !== commentId) return c;
+          const likes = c.userLiked ? c.likes - 1 : c.likes + 1;
+          emitEvent('comment:like', { matchId, commentId, likes });
+          return { ...c, likes, userLiked: !c.userLiked };
+        }),
+      };
+      return updated;
+    });
   };
 
   const value = useMemo(() => ({
-    groups, debates, predictions, leaderboard, comments,
+    groups, debates, predictions, leaderboard, comments, onlineCount,
     createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction, addComment, likeComment,
-  }), [groups, debates, predictions, comments]);
+  }), [groups, debates, predictions, comments, onlineCount]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
