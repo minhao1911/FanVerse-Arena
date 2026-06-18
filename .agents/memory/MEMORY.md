@@ -1,0 +1,1 @@
+- [Expo SDK 52 web setup](expo-sdk52-web.md) — SDK 52 + metro 0.81 needed for web; expo-modules-core src/index.ts exists in SDK 52 but not SDK 56.

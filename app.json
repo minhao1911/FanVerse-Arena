@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "FanVerse",
+    "slug": "fanverse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0a0e1a"
+    },
+    "scheme": "fanverse",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fanverse.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0a0e1a"
+      },
+      "package": "com.fanverse.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

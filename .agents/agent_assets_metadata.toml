@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "c8Hfgvr9HdZfg0i13k04I"
+uri = "file://assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "Rv-RWwKlr1miWGQf2un4t"
+uri = "file://assets/images/splash.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "Dtoelq9QOTXDd828v3sdU"
+uri = "file://assets/images/stadium_hero.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "UsneUEnPVbySJBFJ7Brw3"
+uri = "file://assets/images/community_banner.png"
+type = "image"
+title = "generated_image"
