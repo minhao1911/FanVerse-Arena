@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitEvent } from '../utils/socket';
+import { syncUserToServer } from '../utils/api';
 
 export interface UserProfile {
   id: string;
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const profile = JSON.parse(data);
           setUser(profile);
           emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: profile.teamFlag });
+          syncUserToServer({ id: profile.id, username: profile.username, country: profile.teamName, level: profile.fanLevel, xp: profile.xp });
         } catch {}
       }
       setIsLoading(false);
@@ -69,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profile.email === email) {
         setUser(profile);
         emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: profile.teamFlag });
+        syncUserToServer({ id: profile.id, username: profile.username, country: profile.teamName, level: profile.fanLevel, xp: profile.xp });
         return;
       }
     }
@@ -96,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     await saveUser(profile);
     emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: null });
+    syncUserToServer({ id: profile.id, username: profile.username, country: null, level: 1, xp: 0 });
   };
 
   const logout = async () => {
@@ -120,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const updated = { ...user, teamId, teamName, teamFlag, teamChangedAt: now };
     await saveUser(updated);
+    syncUserToServer({ id: updated.id, username: updated.username, country: teamName, level: updated.fanLevel, xp: updated.xp });
   };
 
   const value = useMemo(() => ({

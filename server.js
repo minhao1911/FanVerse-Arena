@@ -2,15 +2,13 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const { initDb, getTugScore, saveTugScore, upsertUser, getUser } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
+  cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
 app.use(cors());
@@ -18,6 +16,33 @@ app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+app.get('/api/initial-data', (req, res) => {
+  res.json({ tugScore });
+});
+
+app.get('/api/user/:id', async (req, res) => {
+  try {
+    const user = await getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    res.json(user);
+  } catch (err) {
+    console.error('[API] GET /api/user error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/user', async (req, res) => {
+  try {
+    const { id, username, country, level, xp } = req.body;
+    if (!id || !username) return res.status(400).json({ error: 'id and username required' });
+    await upsertUser({ id, username, country, level, xp });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[API] POST /api/user error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 const connectedUsers = new Map();
@@ -106,7 +131,28 @@ io.on('connection', (socket) => {
   });
 });
 
+setInterval(async () => {
+  try {
+    await saveTugScore(tugScore);
+  } catch (err) {
+    console.error('[DB] Failed to persist tug score:', err.message);
+  }
+}, 5000);
+
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Server] Express + Socket.io running on port ${PORT}`);
-});
+
+initDb()
+  .then(() => getTugScore())
+  .then((saved) => {
+    tugScore = saved;
+    console.log(`[DB] Loaded tug score from DB: ${tugScore}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[Server] Express + Socket.io running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('[DB] Init failed, starting with defaults:', err.message);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[Server] Running in degraded mode on port ${PORT}`);
+    });
+  });

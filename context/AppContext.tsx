@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSocket, emitEvent } from '../utils/socket';
+import { fetchInitialData } from '../utils/api';
 
 export interface AppNotification {
   id: string;
@@ -311,6 +312,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    fetchInitialData().then(({ tugScore }) => {
+      console.log('[AppContext] Initial tug score from backend:', tugScore);
+    });
+
     AsyncStorage.getItem(GROUPS_KEY).then((data) => {
       if (data) {
         try {
