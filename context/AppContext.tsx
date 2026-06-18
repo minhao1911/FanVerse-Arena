@@ -6,7 +6,7 @@ import type { WCMatch } from '../data/worldcup2026';
 
 export interface AppNotification {
   id: string;
-  type: 'vote' | 'debate' | 'prediction' | 'comment' | 'group' | 'bet_won' | 'bet_lost';
+  type: 'vote' | 'debate' | 'prediction' | 'comment' | 'group' | 'bet_won' | 'bet_lost' | 'war' | 'mission';
   message: string;
   fromUser?: string;
   fromTeamFlag?: string;
@@ -47,6 +47,7 @@ export interface DebatePost {
   createdAt: string;
   userVote?: 'up' | 'down' | null;
   matchId?: string;
+  category?: string;
 }
 
 export interface Prediction {
@@ -103,6 +104,49 @@ export interface WCBet {
   settledAt?: string;
 }
 
+export interface DailyMission {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  tokenReward: number;
+  type: 'vote' | 'predict' | 'comment' | 'debate' | 'login';
+  target: number;
+  progress: number;
+  completed: boolean;
+}
+
+export interface NationWarSide {
+  nationName: string;
+  nationFlag: string;
+  xp: number;
+  members: number;
+  color: string;
+}
+
+export interface NationWar {
+  id: string;
+  sideA: NationWarSide;
+  sideB: NationWarSide;
+  endsAt: string;
+  week: number;
+  status: 'active' | 'ended';
+  winner?: 'A' | 'B' | 'draw';
+}
+
+export interface NationEntry {
+  rank: number;
+  name: string;
+  flag: string;
+  xp: number;
+  level: number;
+  levelName: string;
+  members: number;
+  weeklyXp: number;
+  confederation: string;
+}
+
 interface AppContextValue {
   groups: Group[];
   debates: DebatePost[];
@@ -114,6 +158,9 @@ interface AppContextValue {
   unreadCount: number;
   coins: number;
   bets: WCBet[];
+  missions: DailyMission[];
+  currentWar: NationWar;
+  nations: NationEntry[];
   markAllRead: () => void;
   sendRealTimeNotification: (data: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => void;
   createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => Promise<void>;
@@ -125,6 +172,7 @@ interface AppContextValue {
   addComment: (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => void;
   likeComment: (matchId: string, commentId: string) => void;
   placeBet: (match: WCMatch, betType: BetType, amount: number) => boolean;
+  completeMission: (missionId: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -133,8 +181,95 @@ const GROUPS_KEY = 'fanverse_groups';
 const DEBATES_KEY = 'fanverse_debates';
 const COINS_KEY = 'fanverse_coins';
 const BETS_KEY = 'fanverse_bets';
+const MISSIONS_KEY = 'fanverse_missions_v2';
 
 const STARTING_COINS = 1000;
+
+function getNationLevel(xp: number): { level: number; name: string } {
+  if (xp >= 10000000) return { level: 100, name: 'Global Superpower' };
+  if (xp >= 7500000) return { level: 75, name: 'Empire' };
+  if (xp >= 5000000) return { level: 50, name: 'Kingdom' };
+  if (xp >= 2500000) return { level: 25, name: 'City' };
+  if (xp >= 1000000) return { level: 10, name: 'Village' };
+  return { level: 1, name: 'Camp' };
+}
+
+const NATIONS_DATA: NationEntry[] = [
+  { rank: 1, name: 'Brazil', flag: '🇧🇷', xp: 4820000, ...getNationLevel(4820000), members: 194200, weeklyXp: 284000, confederation: 'CONMEBOL' },
+  { rank: 2, name: 'Argentina', flag: '🇦🇷', xp: 4350000, ...getNationLevel(4350000), members: 178400, weeklyXp: 261000, confederation: 'CONMEBOL' },
+  { rank: 3, name: 'Spain', flag: '🇪🇸', xp: 3980000, ...getNationLevel(3980000), members: 161000, weeklyXp: 238000, confederation: 'UEFA' },
+  { rank: 4, name: 'Germany', flag: '🇩🇪', xp: 3650000, ...getNationLevel(3650000), members: 148000, weeklyXp: 219000, confederation: 'UEFA' },
+  { rank: 5, name: 'France', flag: '🇫🇷', xp: 3420000, ...getNationLevel(3420000), members: 139000, weeklyXp: 205000, confederation: 'UEFA' },
+  { rank: 6, name: 'England', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', xp: 3100000, ...getNationLevel(3100000), members: 126000, weeklyXp: 188000, confederation: 'UEFA' },
+  { rank: 7, name: 'Portugal', flag: '🇵🇹', xp: 2870000, ...getNationLevel(2870000), members: 116000, weeklyXp: 172000, confederation: 'UEFA' },
+  { rank: 8, name: 'Italy', flag: '🇮🇹', xp: 2640000, ...getNationLevel(2640000), members: 107000, weeklyXp: 158000, confederation: 'UEFA' },
+  { rank: 9, name: 'Netherlands', flag: '🇳🇱', xp: 2310000, ...getNationLevel(2310000), members: 94000, weeklyXp: 139000, confederation: 'UEFA' },
+  { rank: 10, name: 'Japan', flag: '🇯🇵', xp: 2080000, ...getNationLevel(2080000), members: 84000, weeklyXp: 125000, confederation: 'AFC' },
+  { rank: 11, name: 'Morocco', flag: '🇲🇦', xp: 1890000, ...getNationLevel(1890000), members: 77000, weeklyXp: 113000, confederation: 'CAF' },
+  { rank: 12, name: 'USA', flag: '🇺🇸', xp: 1720000, ...getNationLevel(1720000), members: 70000, weeklyXp: 103000, confederation: 'CONCACAF' },
+];
+
+const CURRENT_WAR: NationWar = {
+  id: 'war_w25_2026',
+  sideA: { nationName: 'Argentina', nationFlag: '🇦🇷', xp: 284600, members: 178400, color: '#74b9ff' },
+  sideB: { nationName: 'Brazil', nationFlag: '🇧🇷', xp: 261400, members: 194200, color: '#55efc4' },
+  endsAt: new Date(Date.now() + 4 * 86400000).toISOString(),
+  week: 25,
+  status: 'active',
+};
+
+function getDefaultMissions(): DailyMission[] {
+  return [
+    {
+      id: 'm1',
+      icon: '👍',
+      title: 'Vote on Debates',
+      description: 'Cast your vote on 5 debates',
+      xpReward: 50,
+      tokenReward: 10,
+      type: 'vote',
+      target: 5,
+      progress: 0,
+      completed: false,
+    },
+    {
+      id: 'm2',
+      icon: '🎯',
+      title: 'Make a Prediction',
+      description: 'Predict the outcome of 1 match',
+      xpReward: 75,
+      tokenReward: 15,
+      type: 'predict',
+      target: 1,
+      progress: 0,
+      completed: false,
+    },
+    {
+      id: 'm3',
+      icon: '💬',
+      title: 'Join the Conversation',
+      description: 'Comment on 3 debates or matches',
+      xpReward: 30,
+      tokenReward: 5,
+      type: 'comment',
+      target: 3,
+      progress: 0,
+      completed: false,
+    },
+    {
+      id: 'm4',
+      icon: '🔥',
+      title: 'Start a Debate',
+      description: 'Create 1 original debate post',
+      xpReward: 100,
+      tokenReward: 25,
+      type: 'debate',
+      target: 1,
+      progress: 0,
+      completed: false,
+    },
+  ];
+}
 
 const SAMPLE_DEBATES: DebatePost[] = [
   {
@@ -153,6 +288,7 @@ const SAMPLE_DEBATES: DebatePost[] = [
     createdAt: new Date(Date.now() - 3600000).toISOString(),
     userVote: null,
     matchId: 'b1',
+    category: 'WC 2026',
   },
   {
     id: 'd2',
@@ -170,6 +306,7 @@ const SAMPLE_DEBATES: DebatePost[] = [
     createdAt: new Date(Date.now() - 1800000).toISOString(),
     userVote: null,
     matchId: 'a3',
+    category: 'WC 2026',
   },
   {
     id: 'd3',
@@ -187,6 +324,7 @@ const SAMPLE_DEBATES: DebatePost[] = [
     createdAt: new Date(Date.now() - 900000).toISOString(),
     userVote: null,
     matchId: 'd3',
+    category: 'WC 2026',
   },
   {
     id: 'd4',
@@ -203,6 +341,7 @@ const SAMPLE_DEBATES: DebatePost[] = [
     tags: ['Germany', 'WorldCup2026', 'Tactics'],
     createdAt: new Date(Date.now() - 7200000).toISOString(),
     userVote: null,
+    category: 'WC 2026',
   },
   {
     id: 'd5',
@@ -211,15 +350,15 @@ const SAMPLE_DEBATES: DebatePost[] = [
     authorTeam: 'France',
     authorTeamFlag: '🇫🇷',
     authorLevel: 17,
-    title: '🇫🇷 France vs Belgium INCOMING — the match of the group stage?',
-    content: "Two WC winners, two Golden Ball contenders, one group. Mbappé vs De Bruyne. Camavinga vs Tielemans. This could be the greatest group stage match in WC history.",
-    upvotes: 923,
-    downvotes: 101,
-    commentCount: 421,
-    tags: ['France', 'Belgium', 'WorldCup2026'],
+    title: 'Who is the GREATEST footballer of all time — Messi or Ronaldo?',
+    content: "It's 2026, Messi just won his second World Cup. Does this settle the GOAT debate forever? Ronaldo never won it. Surely this puts Messi ahead?",
+    upvotes: 2140,
+    downvotes: 891,
+    commentCount: 1204,
+    tags: ['GOAT', 'Messi', 'Ronaldo', 'Debate'],
     createdAt: new Date(Date.now() - 10800000).toISOString(),
     userVote: null,
-    matchId: 'c3',
+    category: 'GOAT',
   },
   {
     id: 'd6',
@@ -228,15 +367,15 @@ const SAMPLE_DEBATES: DebatePost[] = [
     authorTeam: 'Portugal',
     authorTeamFlag: '🇵🇹',
     authorLevel: 14,
-    title: '🇵🇹 Portugal vs 🇪🇸 Spain — Ronaldo vs Yamal, who wins the Iberian Derby?',
-    content: "Spain drew their opener, Portugal won 4-1. Ronaldo has 2 goals already. Yamal looked shaky. Lisbon vs Madrid rivalry about to play out on the biggest stage.",
+    title: 'Should VAR be abolished from football entirely?',
+    content: 'Three different controversial VAR decisions at WC2026 already. The game was better without it. Unpopular opinion: get rid of VAR permanently.',
     upvotes: 1567,
-    downvotes: 234,
+    downvotes: 734,
     commentCount: 678,
-    tags: ['Portugal', 'Spain', 'WorldCup2026', 'IberianDerby'],
+    tags: ['VAR', 'Football', 'Controversy'],
     createdAt: new Date(Date.now() - 14400000).toISOString(),
     userVote: null,
-    matchId: 'f3',
+    category: 'Football',
   },
 ];
 
@@ -298,70 +437,25 @@ const SAMPLE_LEADERBOARD: LeaderboardEntry[] = [
 
 const SAMPLE_COMMENTS: Record<string, MatchComment[]> = {
   p1: [
-    { id: 'c1', matchId: 'p1', authorName: 'SambaStar', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 16, text: "Brazil's front three is just unstoppable right now. Vinicius Jr alone will cause nightmares for the Argentina defence. Easy 2-0.", likes: 47, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
-    { id: 'c2', matchId: 'p1', authorName: 'LaAlbiceleste', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Argentina have been incredible since the World Cup. Martinez in goal, De Paul in midfield — this is a completely different team. Don't sleep on them.", likes: 39, createdAt: new Date(Date.now() - 5400000).toISOString(), userLiked: false },
+    { id: 'c1', matchId: 'p1', authorName: 'SambaStar', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 16, text: "Brazil's front three is just unstoppable right now. Vinicius Jr alone will cause nightmares.", likes: 47, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
+    { id: 'c2', matchId: 'p1', authorName: 'LaAlbiceleste', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Argentina have been incredible since the World Cup. Martinez in goal, De Paul in midfield.", likes: 39, createdAt: new Date(Date.now() - 5400000).toISOString(), userLiked: false },
   ],
   a3: [
-    { id: 'wc1', matchId: 'a3', authorName: 'PulisicFan', authorTeam: 'USA', authorTeamFlag: '🇺🇸', authorLevel: 11, text: "PULISIC IS WORLD CLASS. USA holding Argentina 1-1 at the World Cup. This is history being made.", likes: 234, createdAt: new Date(Date.now() - 1200000).toISOString(), userLiked: false },
+    { id: 'wc1', matchId: 'a3', authorName: 'PulisicFan', authorTeam: 'USA', authorTeamFlag: '🇺🇸', authorLevel: 11, text: "PULISIC IS WORLD CLASS. USA holding Argentina 1-1 at the World Cup. This is history!", likes: 234, createdAt: new Date(Date.now() - 1200000).toISOString(), userLiked: false },
     { id: 'wc2', matchId: 'a3', authorName: 'ArgentinaUltra', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Messi WILL score in the second half. He always comes up big. Don't panic yet.", likes: 156, createdAt: new Date(Date.now() - 800000).toISOString(), userLiked: false },
-    { id: 'wc3', matchId: 'a3', authorName: 'NeutralObserver', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 14, text: "This is the best advertisement for the 48-team World Cup. More teams, more upsets, more drama. AMAZING.", likes: 89, createdAt: new Date(Date.now() - 400000).toISOString(), userLiked: false },
   ],
   b3: [
-    { id: 'wc4', matchId: 'b3', authorName: 'SambaStar2', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 20, text: "Rodrygo coming off the bench and scoring immediately. Brazil's squad depth is insane. 2-1!", likes: 187, createdAt: new Date(Date.now() - 2000000).toISOString(), userLiked: false },
-    { id: 'wc5', matchId: 'b3', authorName: 'ColombiaFan', authorTeam: 'Colombia', authorTeamFlag: '🇨🇴', authorLevel: 13, text: "Colombia are giving Brazil a proper game here. Díaz has been phenomenal. Not going down without a fight!", likes: 124, createdAt: new Date(Date.now() - 1500000).toISOString(), userLiked: false },
+    { id: 'wc4', matchId: 'b3', authorName: 'SambaStar2', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 20, text: "Rodrygo off the bench and scoring immediately. Brazil's squad depth is insane!", likes: 187, createdAt: new Date(Date.now() - 2000000).toISOString(), userLiked: false },
   ],
   d3: [
-    { id: 'wc6', matchId: 'd3', authorName: 'ThreeLions', authorTeam: 'England', authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', authorLevel: 18, text: "Bellingham NEEDS to wake up. Saka is trying but getting doubled. We have to break this down!", likes: 312, createdAt: new Date(Date.now() - 600000).toISOString(), userLiked: false },
-    { id: 'wc7', matchId: 'd3', authorName: 'LionsDen99', authorTeam: 'Senegal', authorTeamFlag: '🇸🇳', authorLevel: 16, text: "Senegal's defensive shape is absolutely immaculate. Édouard Mendy has been a wall. Holding for the 3 points!", likes: 198, createdAt: new Date(Date.now() - 300000).toISOString(), userLiked: false },
+    { id: 'wc6', matchId: 'd3', authorName: 'ThreeLions', authorTeam: 'England', authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', authorLevel: 18, text: "Bellingham NEEDS to wake up. Saka is trying but getting doubled.", likes: 312, createdAt: new Date(Date.now() - 600000).toISOString(), userLiked: false },
   ],
 };
 
 const SAMPLE_GROUPS: Group[] = [
-  {
-    id: 'g1',
-    name: 'Brazil Ultras Global',
-    description: 'The biggest Brazil fan community. Unite all Seleção fans worldwide!',
-    teamId: 'brazil',
-    teamName: 'Brazil',
-    teamFlag: '🇧🇷',
-    coverImage: null,
-    privacy: 'public',
-    memberCount: 24800,
-    createdBy: 'u1',
-    createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-    tags: ['Brazil', 'Seleção', 'WorldCup'],
-    isJoined: false,
-  },
-  {
-    id: 'g2',
-    name: 'Tiki-Taka Masters',
-    description: "Tactical analysis and deep dives into Spain's possession game.",
-    teamId: 'spain',
-    teamName: 'Spain',
-    teamFlag: '🇪🇸',
-    coverImage: null,
-    privacy: 'public',
-    memberCount: 18200,
-    createdBy: 'u2',
-    createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
-    tags: ['Spain', 'Tactics', 'LaRoja'],
-    isJoined: false,
-  },
-  {
-    id: 'g3',
-    name: 'Premier League Debate Club',
-    description: 'All things England and Premier League. Hot takes welcome!',
-    teamId: 'england',
-    teamName: 'England',
-    teamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-    coverImage: null,
-    privacy: 'public',
-    memberCount: 15600,
-    createdBy: 'u5',
-    createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
-    tags: ['England', 'Premier League', 'ThreeLions'],
-    isJoined: false,
-  },
+  { id: 'g1', name: 'Brazil Ultras Global', description: 'The biggest Brazil fan community. Unite all Seleção fans worldwide!', teamId: 'brazil', teamName: 'Brazil', teamFlag: '🇧🇷', coverImage: null, privacy: 'public', memberCount: 24800, createdBy: 'u1', createdAt: new Date(Date.now() - 30 * 86400000).toISOString(), tags: ['Brazil', 'Seleção', 'WorldCup'], isJoined: false },
+  { id: 'g2', name: 'Tiki-Taka Masters', description: "Tactical analysis and deep dives into Spain's possession game.", teamId: 'spain', teamName: 'Spain', teamFlag: '🇪🇸', coverImage: null, privacy: 'public', memberCount: 18200, createdBy: 'u2', createdAt: new Date(Date.now() - 20 * 86400000).toISOString(), tags: ['Spain', 'Tactics', 'LaRoja'], isJoined: false },
+  { id: 'g3', name: 'Premier League Debate Club', description: 'All things England and Premier League. Hot takes welcome!', teamId: 'england', teamName: 'England', teamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', coverImage: null, privacy: 'public', memberCount: 15600, createdBy: 'u5', createdAt: new Date(Date.now() - 15 * 86400000).toISOString(), tags: ['England', 'Premier League', 'ThreeLions'], isJoined: false },
 ];
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -373,7 +467,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [coins, setCoins] = useState<number>(STARTING_COINS);
   const [bets, setBets] = useState<WCBet[]>([]);
+  const [missions, setMissions] = useState<DailyMission[]>(getDefaultMissions());
   const leaderboard = SAMPLE_LEADERBOARD;
+  const nations = NATIONS_DATA;
+  const currentWar = CURRENT_WAR;
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -425,6 +522,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     AsyncStorage.getItem(BETS_KEY).then((data) => {
       if (data) {
         try { setBets(JSON.parse(data)); } catch {}
+      }
+    });
+
+    AsyncStorage.getItem(MISSIONS_KEY).then((data) => {
+      if (data) {
+        try {
+          const saved = JSON.parse(data) as { date: string; missions: DailyMission[] };
+          const today = new Date().toDateString();
+          if (saved.date === today) {
+            setMissions(saved.missions);
+          } else {
+            const fresh = getDefaultMissions();
+            setMissions(fresh);
+            AsyncStorage.setItem(MISSIONS_KEY, JSON.stringify({ date: today, missions: fresh }));
+          }
+        } catch {}
       }
     });
 
@@ -532,6 +645,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebates(updated);
     emitEvent('debate:new', newDebate);
     AsyncStorage.setItem(DEBATES_KEY, JSON.stringify(updated.filter(d => !SAMPLE_DEBATES.find(s => s.id === d.id))));
+    setMissions(prev => prev.map(m => m.type === 'debate' && !m.completed ? { ...m, progress: Math.min(m.target, m.progress + 1), completed: m.progress + 1 >= m.target } : m));
   };
 
   const voteDebate = (debateId: string, vote: 'up' | 'down') => {
@@ -552,6 +666,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       emitEvent('debate:vote', { debateId, vote: userVote, upvotes, downvotes });
       return { ...d, userVote, upvotes, downvotes };
     }));
+    if (vote === 'up') {
+      setMissions(prev => prev.map(m => m.type === 'vote' && !m.completed ? { ...m, progress: Math.min(m.target, m.progress + 1), completed: m.progress + 1 >= m.target } : m));
+    }
   };
 
   const submitPrediction = (predictionId: string, home: number, away: number) => {
@@ -559,6 +676,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       p.id === predictionId ? { ...p, userPrediction: { home, away } } : p
     ));
     emitEvent('prediction:submit', { predictionId, home, away });
+    setMissions(prev => prev.map(m => m.type === 'predict' && !m.completed ? { ...m, progress: Math.min(m.target, m.progress + 1), completed: m.progress + 1 >= m.target } : m));
   };
 
   const addComment = (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => {
@@ -579,6 +697,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       [matchId]: [newComment, ...(prev[matchId] ?? [])],
     }));
     emitEvent('comment:new', newComment);
+    setMissions(prev => prev.map(m => m.type === 'comment' && !m.completed ? { ...m, progress: Math.min(m.target, m.progress + 1), completed: m.progress + 1 >= m.target } : m));
   };
 
   const likeComment = (matchId: string, commentId: string) => {
@@ -622,13 +741,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const completeMission = (missionId: string) => {
+    setMissions(prev => {
+      const updated = prev.map(m => m.id === missionId ? { ...m, completed: true, progress: m.target } : m);
+      const today = new Date().toDateString();
+      AsyncStorage.setItem(MISSIONS_KEY, JSON.stringify({ date: today, missions: updated }));
+      return updated;
+    });
+  };
+
   const value = useMemo(() => ({
     groups, debates, predictions, leaderboard, comments, onlineCount,
-    notifications, unreadCount, coins, bets,
+    notifications, unreadCount, coins, bets, missions, currentWar, nations,
     markAllRead, sendRealTimeNotification,
     createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction,
-    addComment, likeComment, placeBet,
-  }), [groups, debates, predictions, comments, onlineCount, notifications, coins, bets]);
+    addComment, likeComment, placeBet, completeMission,
+  }), [groups, debates, predictions, comments, onlineCount, notifications, coins, bets, missions]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

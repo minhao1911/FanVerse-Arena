@@ -7,16 +7,24 @@ import { useApp } from '@/context/AppContext';
 
 function TabIcon({ name, focused, color }: { name: any; focused: boolean; color: string }) {
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+    <View style={[styles.iconWrap, focused && { backgroundColor: 'rgba(245,166,35,0.15)', borderRadius: 10 }]}>
       <Ionicons name={name} size={22} color={color} />
     </View>
   );
 }
 
-function WCTabIcon({ focused, color }: { focused: boolean; color: string }) {
+function WCTabIcon({ focused }: { focused: boolean }) {
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapWC]}>
-      <Text style={[styles.wcEmoji, { opacity: focused ? 1 : 0.6 }]}>⚽</Text>
+    <View style={[styles.iconWrap, focused && { backgroundColor: 'rgba(34,197,94,0.15)', borderRadius: 10 }]}>
+      <Text style={[styles.emojiIcon, { opacity: focused ? 1 : 0.55 }]}>⚽</Text>
+    </View>
+  );
+}
+
+function NationsTabIcon({ focused }: { focused: boolean }) {
+  return (
+    <View style={[styles.iconWrap, focused && { backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 10 }]}>
+      <Text style={[styles.emojiIcon, { opacity: focused ? 1 : 0.55 }]}>⚔️</Text>
     </View>
   );
 }
@@ -24,10 +32,10 @@ function WCTabIcon({ focused, color }: { focused: boolean; color: string }) {
 function NotifIcon({ focused, color }: { focused: boolean; color: string }) {
   const { unreadCount } = useApp();
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+    <View style={[styles.iconWrap, focused && { backgroundColor: 'rgba(245,166,35,0.15)', borderRadius: 10 }]}>
       <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={22} color={color} />
       {unreadCount > 0 && (
-        <View style={styles.badgeWrap}>
+        <View style={styles.badge}>
           <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
         </View>
       )}
@@ -59,31 +67,41 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="arena"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'flame' : 'flame-outline'} focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name={focused ? 'flame' : 'flame-outline'} focused={focused} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="worldcup"
         options={{
-          tabBarIcon: ({ focused, color }) => <WCTabIcon focused={focused} color={color} />,
+          tabBarIcon: ({ focused }) => <WCTabIcon focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="nations"
+        options={{
+          tabBarIcon: ({ focused }) => <NationsTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="predict"
-        options={{
-          href: null,
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="communities"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'people' : 'people-outline'} focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name={focused ? 'people' : 'people-outline'} focused={focused} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -95,13 +113,17 @@ export default function TabLayout() {
       <Tabs.Screen
         name="leaderboard"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'podium' : 'podium-outline'} focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name={focused ? 'podium' : 'podium-outline'} focused={focused} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'person' : 'person-outline'} focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name={focused ? 'person' : 'person-outline'} focused={focused} color={color} />
+          ),
         }}
       />
     </Tabs>
@@ -114,18 +136,11 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
   },
-  iconWrapActive: {
-    backgroundColor: 'rgba(245, 166, 35, 0.15)',
-  },
-  iconWrapWC: {
-    backgroundColor: 'rgba(34, 197, 94, 0.18)',
-  },
-  wcEmoji: {
+  emojiIcon: {
     fontSize: 22,
   },
-  badgeWrap: {
+  badge: {
     position: 'absolute',
     top: 2,
     right: 2,

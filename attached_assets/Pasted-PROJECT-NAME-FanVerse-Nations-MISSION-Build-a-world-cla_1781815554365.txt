@@ -1,0 +1,338 @@
+PROJECT NAME: FanVerse Nations
+
+MISSION
+
+Build a world-class football fan community platform where supporters join their favorite national team, compete for Nation XP, participate in predictions, debates, challenges, and Nation Wars, and help their nation become the strongest fan community in the world.
+
+The app should feel like a combination of FIFA World Cup, Discord, Reddit, Duolingo streaks, Clash of Clans progression, and social gaming.
+
+DESIGN STYLE
+
+* Premium dark mode
+* Apple-quality UI
+* FIFA World Cup inspired visuals
+* Stadium atmosphere
+* Glassmorphism cards
+* Smooth animations
+* Mobile-first design
+* Modern typography
+* Country flags and nation branding
+* Gold, silver, and bronze ranking effects
+
+CORE USER FLOW
+
+1. User signs up.
+2. User selects one nation.
+3. User joins that nation's fan community.
+4. User earns XP through activities.
+5. User contributes XP to their nation.
+6. User climbs fan rankings.
+7. Nation competes against other nations.
+
+AUTHENTICATION
+
+* Email Login
+* Google Login
+* Password Reset
+* Secure Sessions
+* Profile Setup
+
+USER PROFILE
+
+Store:
+
+* Username
+* Avatar
+* Country/Nation
+* Fan Level
+* Reputation Score
+* Fan IQ
+* Total XP
+* Prediction Accuracy
+* Debate Wins
+* Achievements
+* Premium Status
+
+NATION SYSTEM
+
+Create a database table for Nations.
+
+Each Nation has:
+
+* Name
+* Flag
+* Total XP
+* Nation Level
+* Member Count
+* Weekly XP
+* Global Rank
+* Nation Description
+
+Examples:
+
+Argentina
+Brazil
+France
+England
+Germany
+Portugal
+Spain
+Netherlands
+Croatia
+Morocco
+
+NATION LEVEL SYSTEM
+
+Level 1 = Camp
+
+Level 10 = Village
+
+Level 25 = City
+
+Level 50 = Kingdom
+
+Level 75 = Empire
+
+Level 100 = Global Superpower
+
+Every member contributes XP toward nation growth.
+
+NATION WAR SYSTEM
+
+Weekly events.
+
+Examples:
+
+Argentina vs Brazil
+
+France vs England
+
+Portugal vs Spain
+
+Members earn points through:
+
+* Predictions
+* Debates
+* Daily Missions
+* Poll Participation
+* Community Activity
+
+Winning nation receives:
+
+* Trophy Badge
+* Bonus XP
+* Hall of Fame Placement
+
+FAN XP SYSTEM
+
+Users earn XP by:
+
+* Daily Login
+* Debate Participation
+* Debate Victory
+* Correct Predictions
+* Creating Quality Posts
+* Receiving Upvotes
+* Completing Missions
+
+Level Formula:
+
+Level 1-100+
+
+Display progress bar and rewards.
+
+DAILY XP LIMITS
+
+Free User:
+1000 XP per day
+
+Premium:
+5000 XP per day
+
+Elite:
+10000 XP per day
+
+PREDICTION SYSTEM
+
+Create prediction center.
+
+Users can predict:
+
+* Match Winner
+* Draw
+* Tournament Winner
+* Golden Boot Winner
+
+Use virtual Fan Tokens.
+
+No real-money betting.
+
+Users can spend Fan Tokens and earn rewards based on prediction accuracy.
+
+DEBATE ARENA
+
+Features:
+
+* Public debates
+* Replies
+* Voting
+* Trending debates
+* AI moderation
+
+Examples:
+
+Who is the greatest footballer ever?
+
+Can Brazil win another World Cup?
+
+Should VAR remain in football?
+
+AI FAN IQ
+
+Create Fan IQ score based on:
+
+* Prediction Accuracy
+* Debate Quality
+* Community Reputation
+* Activity
+
+Display global ranking.
+
+GAMIFICATION
+
+Achievements:
+
+* Rookie Fan
+* Elite Fan
+* Prediction Master
+* Debate Champion
+* Nation Hero
+* World Cup Expert
+* Legendary Supporter
+
+BADGES
+
+Animated badges.
+
+Display on profile.
+
+LEADERBOARDS
+
+Global Fans
+
+Top Nations
+
+Top Predictors
+
+Top Debaters
+
+Top Fan IQ
+
+Top Contributors
+
+DAILY MISSIONS
+
+Examples:
+
+Vote on 5 debates
+
+Make 1 prediction
+
+Earn 10 upvotes
+
+Comment 3 times
+
+Reward XP and Fan Tokens.
+
+PREMIUM SYSTEM
+
+Integrate Razorpay.
+
+Fan Pass ₹99/month
+
+Benefits:
+
+* Higher XP limit
+* Premium Badge
+* Exclusive Frames
+* Additional Predictions
+* Advanced Analytics
+
+Elite Pass ₹299/month
+
+Benefits:
+
+* Maximum XP Cap
+* Elite Badge
+* Nation Leadership Eligibility
+* Exclusive Nation Events
+* AI Insights
+
+NOTIFICATIONS
+
+Push notifications for:
+
+* Nation War Updates
+* Match Predictions
+* XP Rewards
+* Rank Changes
+* Replies
+* Mentions
+
+ADMIN PANEL
+
+Manage:
+
+* Users
+* Nations
+* Debates
+* Predictions
+* Reports
+* Bans
+* Analytics
+
+DATABASE
+
+Use Supabase PostgreSQL.
+
+Tables:
+
+users
+nations
+nation_members
+nation_wars
+matches
+predictions
+prediction_results
+debates
+comments
+votes
+xp_transactions
+badges
+achievements
+notifications
+subscriptions
+
+SECURITY
+
+* Row Level Security
+* Anti-spam protection
+* Rate limiting
+* Secure API architecture
+* Input validation
+* Content moderation
+
+SCALABILITY
+
+Design architecture to support:
+
+* 100,000+ users
+* Realtime updates
+* Infinite scrolling
+* Fast search
+* Cloud deployment
+* Future mobile apps
+
+FINAL GOAL
+
+Build the most engaging football fan nation platform in the world where supporters fight for national pride, earn status, level up their nation, dominate leaderboards, and return daily to help their country become the strongest football fan community.
