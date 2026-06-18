@@ -15,48 +15,53 @@ const TEAM_A = { name: 'Argentina', flag: '🇦🇷', color: '#74b9ff', light: '
 const TEAM_B = { name: 'Brazil',    flag: '🇧🇷', color: '#fdcb6e', light: '#fdcb6e22' };
 
 function PullButton({
-  team,
   color,
   flag,
   name,
   onPress,
   disabled,
 }: {
-  team: 'A' | 'B';
   color: string;
   flag: string;
   name: string;
   onPress: () => void;
   disabled: boolean;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale   = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
   const useNative = Platform.OS !== 'web';
 
-  const bounce = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.88, duration: 80, useNativeDriver: useNative, easing: Easing.out(Easing.quad) }),
-      Animated.spring(scale, { toValue: 1, useNativeDriver: useNative, tension: 200, friction: 7 }),
-    ]).start();
-  };
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: disabled ? 0.45 : 1,
+      duration: disabled ? 60 : 220,
+      useNativeDriver: useNative,
+      easing: Easing.out(Easing.quad),
+    }).start();
+  }, [disabled]);
 
   const handlePress = () => {
     if (disabled) return;
-    bounce();
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.86, duration: 90, useNativeDriver: useNative, easing: Easing.out(Easing.quad) }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: useNative, tension: 180, friction: 6 }),
+    ]).start();
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     onPress();
   };
 
   return (
-    <Animated.View style={{ transform: [{ scale }], flex: 1 }}>
+    <Animated.View style={{ transform: [{ scale }], opacity, flex: 1 }}>
       <TouchableOpacity
         style={[styles.pullBtn, { backgroundColor: color + '22', borderColor: color }]}
         onPress={handlePress}
         activeOpacity={0.85}
+        disabled={disabled}
       >
         <Text style={styles.pullFlag}>{flag}</Text>
         <Text style={[styles.pullTeamName, { color }]}>{name}</Text>
-        <View style={[styles.pullBadge, { backgroundColor: color }]}>
-          <Text style={styles.pullLabel}>PULL</Text>
+        <View style={[styles.pullBadge, { backgroundColor: disabled ? color + '80' : color }]}>
+          <Text style={styles.pullLabel}>{disabled ? '⏳' : 'PULL'}</Text>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -77,8 +82,10 @@ export default function RivalryTugOfWar() {
       Animated.spring(barAnim, {
         toValue: data.score,
         useNativeDriver: false,
-        tension: 60,
-        friction: 10,
+        tension: 28,
+        friction: 12,
+        restDisplacementThreshold: 0.1,
+        restSpeedThreshold: 0.1,
       }).start();
       Animated.sequence([
         Animated.timing(glowAnim, { toValue: 1, duration: 120, useNativeDriver: false }),
@@ -94,13 +101,13 @@ export default function RivalryTugOfWar() {
     setLastPull(team);
     setCooldown(true);
     emitEvent('tug_pull', { team });
-    setTimeout(() => setCooldown(false), 400);
+    setTimeout(() => setCooldown(false), 500);
   };
 
   const teamAWidth = barAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
   const teamBWidth = barAnim.interpolate({ inputRange: [0, 100], outputRange: ['100%', '0%'] });
 
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] });
 
   const aLeading = score > 55;
   const bLeading = score < 45;
@@ -154,7 +161,6 @@ export default function RivalryTugOfWar() {
       {/* Pull buttons */}
       <View style={styles.btnRow}>
         <PullButton
-          team="A"
           color={TEAM_A.color}
           flag={TEAM_A.flag}
           name={TEAM_A.name}
@@ -165,7 +171,6 @@ export default function RivalryTugOfWar() {
           <Text style={styles.vs}>VS</Text>
         </View>
         <PullButton
-          team="B"
           color={TEAM_B.color}
           flag={TEAM_B.flag}
           name={TEAM_B.name}
@@ -174,7 +179,7 @@ export default function RivalryTugOfWar() {
         />
       </View>
 
-      <Text style={styles.hint}>Long-press to rapid fire ⚡</Text>
+      <Text style={styles.hint}>One pull per 500ms · fair play enforced server-side</Text>
     </View>
   );
 }

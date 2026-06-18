@@ -21,6 +21,8 @@ app.get('/health', (req, res) => {
 });
 
 const connectedUsers = new Map();
+const tugPullTimestamps = new Map();
+const TUG_RATE_LIMIT_MS = 400;
 let tugScore = 50;
 
 io.on('connection', (socket) => {
@@ -29,6 +31,11 @@ io.on('connection', (socket) => {
   socket.emit('tug_update', { score: tugScore });
 
   socket.on('tug_pull', (data) => {
+    const now = Date.now();
+    const last = tugPullTimestamps.get(socket.id) ?? 0;
+    if (now - last < TUG_RATE_LIMIT_MS) return;
+    tugPullTimestamps.set(socket.id, now);
+
     if (data.team === 'A') {
       tugScore = Math.min(100, tugScore + 1);
     } else if (data.team === 'B') {
@@ -93,6 +100,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     connectedUsers.delete(socket.id);
+    tugPullTimestamps.delete(socket.id);
     io.emit('presence:update', { onlineCount: connectedUsers.size });
     console.log(`[Socket] Client disconnected: ${socket.id}`);
   });
