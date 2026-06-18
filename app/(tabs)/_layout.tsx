@@ -1,13 +1,28 @@
 import { Tabs } from 'expo-router';
-import { Platform, View, StyleSheet } from 'react-native';
+import { Platform, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useApp } from '@/context/AppContext';
 
 function TabIcon({ name, focused, color }: { name: any; focused: boolean; color: string }) {
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
       <Ionicons name={name} size={22} color={color} />
+    </View>
+  );
+}
+
+function NotifIcon({ focused, color }: { focused: boolean; color: string }) {
+  const { unreadCount } = useApp();
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={22} color={color} />
+      {unreadCount > 0 && (
+        <View style={styles.badgeWrap}>
+          <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -58,6 +73,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="notifications"
+        options={{
+          tabBarIcon: ({ focused, color }) => <NotifIcon focused={focused} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="leaderboard"
         options={{
           tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'podium' : 'podium-outline'} focused={focused} color={color} />,
@@ -83,5 +104,23 @@ const styles = StyleSheet.create({
   },
   iconWrapActive: {
     backgroundColor: 'rgba(245, 166, 35, 0.15)',
+  },
+  badgeWrap: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontFamily: 'Poppins_700Bold',
+    fontWeight: '700' as const,
+    color: '#fff',
   },
 });
