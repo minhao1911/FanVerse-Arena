@@ -58,6 +58,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="leaderboard"
+        options={{
+          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'podium' : 'podium-outline'} focused={focused} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'person' : 'person-outline'} focused={focused} color={color} />,
