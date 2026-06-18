@@ -1,10 +1,15 @@
 import { io, Socket } from 'socket.io-client';
 import { Platform } from 'react-native';
 
-const SERVER_URL =
-  Platform.OS === 'web'
-    ? `${typeof window !== 'undefined' ? window.location.protocol : 'http:'}//${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:3001`
-    : 'http://localhost:3001';
+function getServerUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+  return 'http://localhost:3001';
+}
+
+const SERVER_URL = getServerUrl();
 
 let socket: Socket | null = null;
 
