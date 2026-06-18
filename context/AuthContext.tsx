@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { emitEvent } from '../utils/socket';
 
 export interface UserProfile {
   id: string;
@@ -47,7 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     AsyncStorage.getItem(STORAGE_KEY).then((data) => {
       if (data) {
         try {
-          setUser(JSON.parse(data));
+          const profile = JSON.parse(data);
+          setUser(profile);
+          emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: profile.teamFlag });
         } catch {}
       }
       setIsLoading(false);
@@ -65,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = JSON.parse(stored);
       if (profile.email === email) {
         setUser(profile);
+        emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: profile.teamFlag });
         return;
       }
     }
@@ -91,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     await saveUser(profile);
+    emitEvent('user:join', { userId: profile.id, username: profile.username, teamFlag: null });
   };
 
   const logout = async () => {

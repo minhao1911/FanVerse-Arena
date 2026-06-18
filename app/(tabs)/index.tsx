@@ -29,7 +29,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { debates, voteDebate } = useApp();
+  const { debates, voteDebate, onlineCount } = useApp();
 
   const topDebates = debates.slice(0, 5);
 
@@ -50,6 +50,14 @@ export default function HomeScreen() {
               colors={['#111827', '#0a0e1a']}
               style={styles.heroBanner}
             >
+              {/* Live online indicator */}
+              <View style={styles.onlinePill}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>
+                  {onlineCount > 0 ? `${onlineCount.toLocaleString()} fan${onlineCount === 1 ? '' : 's'} online` : 'Connecting...'}
+                </Text>
+              </View>
+
               <View style={styles.heroContent}>
                 <View>
                   <Text style={styles.heroGreeting}>Welcome back,</Text>
@@ -152,4 +160,28 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold', fontWeight: '700' as const },
   seeAll: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', fontWeight: '600' as const },
+  onlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.25)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 14,
+    gap: 6,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
+  },
+  onlineText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_500Medium',
+    color: '#22c55e',
+  },
 });
