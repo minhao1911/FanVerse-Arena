@@ -67,6 +67,10 @@ io.on('connection', (socket) => {
     console.log(`[Chat] Room ${data.roomId} — ${data.authorName}: ${data.text}`);
   });
 
+  socket.on('message:react', (data) => {
+    socket.broadcast.emit('message:react', data);
+  });
+
   socket.on('typing:start', (data) => {
     socket.broadcast.emit('typing:start', data);
   });

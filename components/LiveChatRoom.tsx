@@ -5,7 +5,9 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Animated,
   Easing,
@@ -36,10 +38,16 @@ interface TypingUser {
   roomId: string;
 }
 
+interface ReactionCounts {
+  [emoji: string]: { count: number; reacted: boolean };
+}
+
 interface Props {
   roomId: string;
   roomName?: string;
 }
+
+const QUICK_EMOJIS = ['🔥', '💯', '😤', '🤣', '👏', '❤️'];
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -103,7 +111,6 @@ const dotStyles = StyleSheet.create({
 function TypingIndicator({ typers }: { typers: TypingUser[] }) {
   const colors = useColors();
   if (typers.length === 0) return null;
-
   const label =
     typers.length === 1
       ? `${typers[0].flag} ${typers[0].username} is typing`
@@ -129,11 +136,91 @@ const indicatorStyles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  label: {
-    fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
-    fontStyle: 'italic',
+  label: { fontSize: 12, fontFamily: 'Poppins_400Regular', fontStyle: 'italic' },
+});
+
+function ReactionPicker({
+  visible,
+  isOwn,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  isOwn: boolean;
+  onSelect: (emoji: string) => void;
+  onClose: () => void;
+}) {
+  const colors = useColors();
+  const scale = useRef(new Animated.Value(0.6)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 120, friction: 8 }),
+        Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scale.setValue(0.6);
+      opacity.setValue(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent animationType="none" visible={visible} onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={pickerStyles.backdrop}>
+          <TouchableWithoutFeedback>
+            <Animated.View style={[
+              pickerStyles.tray,
+              { backgroundColor: colors.card, borderColor: colors.border, transform: [{ scale }], opacity },
+              isOwn ? pickerStyles.trayRight : pickerStyles.trayLeft,
+            ]}>
+              {QUICK_EMOJIS.map((emoji) => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={pickerStyles.emojiBtn}
+                  onPress={() => onSelect(emoji)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={pickerStyles.emoji}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: 'center' },
+  tray: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    marginHorizontal: 48,
+    borderRadius: 36,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
+  trayRight: { alignSelf: 'flex-end' },
+  trayLeft: { alignSelf: 'flex-start' },
+  emojiBtn: {
+    width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: 20,
+  },
+  emoji: { fontSize: 22 },
 });
 
 export default function LiveChatRoom({ roomId, roomName }: Props) {
@@ -143,6 +230,8 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(SEED_MESSAGES[roomId] ?? []);
   const [inputText, setInputText] = useState('');
   const [typers, setTypers] = useState<TypingUser[]>([]);
+  const [reactions, setReactions] = useState<Record<string, ReactionCounts>>({});
+  const [pickerMsgId, setPickerMsgId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
@@ -158,12 +247,22 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
       });
     };
 
+    const handleReact = (data: { messageId: string; emoji: string; userId: string; roomId: string }) => {
+      if (data.roomId !== roomId) return;
+      setReactions(prev => {
+        const msgReactions = { ...(prev[data.messageId] ?? {}) };
+        const existing = msgReactions[data.emoji];
+        msgReactions[data.emoji] = {
+          count: (existing?.count ?? 0) + 1,
+          reacted: existing?.reacted ?? false,
+        };
+        return { ...prev, [data.messageId]: msgReactions };
+      });
+    };
+
     const handleTypingStart = (data: TypingUser) => {
       if (data.roomId !== roomId || data.userId === user?.id) return;
-      setTypers(prev => {
-        if (prev.find(t => t.userId === data.userId)) return prev;
-        return [...prev, data];
-      });
+      setTypers(prev => prev.find(t => t.userId === data.userId) ? prev : [...prev, data]);
     };
 
     const handleTypingStop = (data: { userId: string; roomId: string }) => {
@@ -172,11 +271,13 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
     };
 
     socket.on('receive_chat_message', handleIncoming);
+    socket.on('message:react', handleReact);
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
 
     return () => {
       socket.off('receive_chat_message', handleIncoming);
+      socket.off('message:react', handleReact);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
     };
@@ -191,18 +292,11 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
 
   const handleChangeText = (text: string) => {
     setInputText(text);
-
     if (!user) return;
-
     if (text.length > 0) {
       if (!isTypingRef.current) {
         isTypingRef.current = true;
-        emitEvent('typing:start', {
-          userId: user.id,
-          username: user.username,
-          flag: user.teamFlag ?? '🌍',
-          roomId,
-        });
+        emitEvent('typing:start', { userId: user.id, username: user.username, flag: user.teamFlag ?? '🌍', roomId });
       }
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(emitTypingStop, 2500);
@@ -215,7 +309,6 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
   const handleSend = () => {
     if (!inputText.trim() || !user) return;
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     emitTypingStop();
 
@@ -229,50 +322,125 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
       text: inputText.trim(),
       createdAt: new Date().toISOString(),
     };
-
     setMessages(prev => [...prev, msg]);
     emitEvent('send_chat_message', msg);
     setInputText('');
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
   };
 
+  const handleLongPress = (msgId: string) => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setPickerMsgId(msgId);
+  };
+
+  const handleSelectReaction = (emoji: string) => {
+    if (!pickerMsgId || !user) return;
+    const msgId = pickerMsgId;
+    setPickerMsgId(null);
+
+    setReactions(prev => {
+      const msgReactions = { ...(prev[msgId] ?? {}) };
+      const existing = msgReactions[emoji];
+      if (existing?.reacted) {
+        msgReactions[emoji] = { count: Math.max(0, existing.count - 1), reacted: false };
+        if (msgReactions[emoji].count === 0) delete msgReactions[emoji];
+      } else {
+        msgReactions[emoji] = { count: (existing?.count ?? 0) + 1, reacted: true };
+      }
+      return { ...prev, [msgId]: msgReactions };
+    });
+
+    emitEvent('message:react', { messageId: msgId, emoji, userId: user.id, roomId });
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleTapReaction = (msgId: string, emoji: string) => {
+    if (!user) return;
+    setReactions(prev => {
+      const msgReactions = { ...(prev[msgId] ?? {}) };
+      const existing = msgReactions[emoji];
+      if (existing?.reacted) {
+        msgReactions[emoji] = { count: Math.max(0, existing.count - 1), reacted: false };
+        if (msgReactions[emoji].count === 0) delete msgReactions[emoji];
+      } else {
+        msgReactions[emoji] = { count: (existing?.count ?? 0) + 1, reacted: true };
+      }
+      return { ...prev, [msgId]: msgReactions };
+    });
+    emitEvent('message:react', { messageId: msgId, emoji, userId: user.id, roomId });
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
     const isOwn = item.authorId === user?.id;
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const isGrouped = prevMsg?.authorId === item.authorId;
+    const msgReactions = reactions[item.id] ?? {};
+    const reactionEntries = Object.entries(msgReactions).filter(([, v]) => v.count > 0);
 
     return (
       <View style={[styles.msgRow, isOwn && styles.msgRowOwn]}>
         {!isOwn && (
-          <View style={[
-            styles.avatar,
-            { backgroundColor: colors.cardAlt },
-            isGrouped && styles.avatarHidden,
-          ]}>
+          <View style={[styles.avatar, { backgroundColor: colors.cardAlt }, isGrouped && styles.avatarHidden]}>
             {!isGrouped && <Text style={styles.avatarFlag}>{item.authorFlag}</Text>}
           </View>
         )}
 
-        <View style={[styles.bubble, isOwn
-          ? { backgroundColor: colors.primary, borderBottomRightRadius: 4 }
-          : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 }
-        ]}>
-          {!isGrouped && !isOwn && (
-            <View style={styles.bubbleHeader}>
-              <Text style={[styles.authorName, { color: colors.foreground }]}>
-                {item.authorName}
+        <View style={styles.bubbleCol}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onLongPress={() => handleLongPress(item.id)}
+            delayLongPress={350}
+          >
+            <View style={[styles.bubble, isOwn
+              ? { backgroundColor: colors.primary, borderBottomRightRadius: 4 }
+              : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: 4 }
+            ]}>
+              {!isGrouped && !isOwn && (
+                <View style={styles.bubbleHeader}>
+                  <Text style={[styles.authorName, { color: colors.foreground }]}>{item.authorName}</Text>
+                  <View style={[styles.lvPill, { backgroundColor: colors.cardAlt }]}>
+                    <Text style={[styles.lvText, { color: colors.muted }]}>Lv {item.authorLevel}</Text>
+                  </View>
+                </View>
+              )}
+              <Text style={[styles.msgText, { color: isOwn ? '#000' : colors.foreground }]}>{item.text}</Text>
+              <Text style={[styles.msgTime, { color: isOwn ? 'rgba(0,0,0,0.5)' : colors.muted }]}>
+                {timeAgo(item.createdAt)}
               </Text>
-              <View style={[styles.lvPill, { backgroundColor: colors.cardAlt }]}>
-                <Text style={[styles.lvText, { color: colors.muted }]}>Lv {item.authorLevel}</Text>
-              </View>
+            </View>
+          </TouchableOpacity>
+
+          {reactionEntries.length > 0 && (
+            <View style={[styles.reactionRow, isOwn && styles.reactionRowOwn]}>
+              {reactionEntries.map(([emoji, { count, reacted }]) => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={[
+                    styles.reactionPill,
+                    {
+                      backgroundColor: reacted ? colors.primary + '28' : colors.cardAlt,
+                      borderColor: reacted ? colors.primary : colors.border,
+                    }
+                  ]}
+                  onPress={() => handleTapReaction(item.id, emoji)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.reactionEmoji}>{emoji}</Text>
+                  <Text style={[styles.reactionCount, { color: reacted ? colors.primary : colors.muted }]}>
+                    {count}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.addReactionBtn, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}
+                onPress={() => handleLongPress(item.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.addReactionText, { color: colors.muted }]}>＋</Text>
+              </TouchableOpacity>
             </View>
           )}
-          <Text style={[styles.msgText, { color: isOwn ? '#000' : colors.foreground }]}>
-            {item.text}
-          </Text>
-          <Text style={[styles.msgTime, { color: isOwn ? 'rgba(0,0,0,0.5)' : colors.muted }]}>
-            {timeAgo(item.createdAt)}
-          </Text>
         </View>
 
         {isOwn && (
@@ -283,6 +451,9 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
       </View>
     );
   };
+
+  const pickerMsg = messages.find(m => m.id === pickerMsgId);
+  const pickerIsOwn = pickerMsg?.authorId === user?.id;
 
   return (
     <KeyboardAvoidingView
@@ -355,6 +526,13 @@ export default function LiveChatRoom({ roomId, roomName }: Props) {
           <Ionicons name="send" size={18} color="#000" />
         </TouchableOpacity>
       </View>
+
+      <ReactionPicker
+        visible={pickerMsgId !== null}
+        isOwn={pickerIsOwn ?? false}
+        onSelect={handleSelectReaction}
+        onClose={() => setPickerMsgId(null)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -369,10 +547,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 6,
   },
-  liveDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: '#ef4444',
-  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#ef4444' },
   liveText: { fontSize: 11, fontFamily: 'Poppins_500Medium' },
   liveSep: { fontSize: 11 },
   liveRoom: { fontSize: 11, fontFamily: 'Poppins_600SemiBold', flex: 1 },
@@ -393,8 +568,8 @@ const styles = StyleSheet.create({
   },
   avatarHidden: { opacity: 0 },
   avatarFlag: { fontSize: 16 },
+  bubbleCol: { flexShrink: 1, maxWidth: '72%', gap: 4 },
   bubble: {
-    maxWidth: '72%',
     borderRadius: 16,
     padding: 10,
     paddingHorizontal: 12,
@@ -406,6 +581,34 @@ const styles = StyleSheet.create({
   lvText: { fontSize: 10, fontFamily: 'Poppins_500Medium' },
   msgText: { fontSize: 14, fontFamily: 'Poppins_400Regular', lineHeight: 20 },
   msgTime: { fontSize: 10, fontFamily: 'Poppins_400Regular', marginTop: 2, alignSelf: 'flex-end' },
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    paddingHorizontal: 4,
+    alignSelf: 'flex-start',
+  },
+  reactionRowOwn: { alignSelf: 'flex-end' },
+  reactionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  reactionEmoji: { fontSize: 13 },
+  reactionCount: { fontSize: 11, fontFamily: 'Poppins_600SemiBold' },
+  addReactionBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addReactionText: { fontSize: 13, lineHeight: 18 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 60 },
   emptyEmoji: { fontSize: 40 },
   emptyTitle: { fontSize: 16, fontFamily: 'Poppins_700Bold' },
