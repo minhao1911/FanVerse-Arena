@@ -33,6 +33,18 @@ async function initDb() {
     ON CONFLICT (id) DO NOTHING
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS team_pulls (
+      team_id TEXT PRIMARY KEY,
+      pull_count BIGINT NOT NULL DEFAULT 0
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO team_pulls (team_id, pull_count) VALUES ('A', 0) ON CONFLICT (team_id) DO NOTHING;
+    INSERT INTO team_pulls (team_id, pull_count) VALUES ('B', 0) ON CONFLICT (team_id) DO NOTHING;
+  `);
+
   console.log('[DB] Tables ready');
 }
 
@@ -46,6 +58,30 @@ async function saveTugScore(score) {
     'UPDATE global_state SET tug_score = $1, updated_at = NOW() WHERE id = 1',
     [score]
   );
+}
+
+async function getTeamPulls() {
+  const res = await pool.query('SELECT team_id, pull_count FROM team_pulls ORDER BY team_id');
+  const counts = { A: 0, B: 0 };
+  for (const row of res.rows) {
+    counts[row.team_id] = Number(row.pull_count);
+  }
+  return counts;
+}
+
+async function flushTeamPullDeltas(deltas) {
+  if (deltas.A > 0) {
+    await pool.query(
+      'UPDATE team_pulls SET pull_count = pull_count + $1 WHERE team_id = $2',
+      [deltas.A, 'A']
+    );
+  }
+  if (deltas.B > 0) {
+    await pool.query(
+      'UPDATE team_pulls SET pull_count = pull_count + $1 WHERE team_id = $2',
+      [deltas.B, 'B']
+    );
+  }
 }
 
 async function upsertUser({ id, username, country, level, xp }) {
@@ -66,4 +102,4 @@ async function getUser(id) {
   return res.rows[0] ?? null;
 }
 
-module.exports = { pool, initDb, getTugScore, saveTugScore, upsertUser, getUser };
+module.exports = { pool, initDb, getTugScore, saveTugScore, getTeamPulls, flushTeamPullDeltas, upsertUser, getUser };

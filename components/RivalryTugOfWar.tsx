@@ -14,6 +14,12 @@ import { getSocket, emitEvent } from '@/utils/socket';
 const TEAM_A = { name: 'Argentina', flag: '🇦🇷', color: '#74b9ff', light: '#74b9ff22' };
 const TEAM_B = { name: 'Brazil',    flag: '🇧🇷', color: '#fdcb6e', light: '#fdcb6e22' };
 
+function formatPulls(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+
 function PullButton({
   color,
   flag,
@@ -68,15 +74,61 @@ function PullButton({
   );
 }
 
+function LeaderboardRow({
+  flag,
+  name,
+  color,
+  pulls,
+  totalPulls,
+  rank,
+}: {
+  flag: string;
+  name: string;
+  color: string;
+  pulls: number;
+  totalPulls: number;
+  rank: number;
+}) {
+  const pct = totalPulls > 0 ? pulls / totalPulls : 0.5;
+  const barAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(barAnim, {
+      toValue: pct,
+      useNativeDriver: false,
+      tension: 40,
+      friction: 10,
+    }).start();
+  }, [pct]);
+
+  const barWidth = barAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+
+  return (
+    <View style={styles.lbRow}>
+      <View style={styles.lbMeta}>
+        <Text style={styles.lbRank}>#{rank}</Text>
+        <Text style={styles.lbFlag}>{flag}</Text>
+        <Text style={[styles.lbName, { color }]}>{name}</Text>
+        <Text style={styles.lbPulls}>{formatPulls(pulls)} pulls</Text>
+      </View>
+      <View style={styles.lbBarTrack}>
+        <Animated.View style={[styles.lbBarFill, { width: barWidth, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
 export default function RivalryTugOfWar() {
   const [score, setScore] = useState(50);
   const [lastPull, setLastPull] = useState<'A' | 'B' | null>(null);
   const [cooldown, setCooldown] = useState(false);
+  const [teamPulls, setTeamPulls] = useState<{ A: number; B: number }>({ A: 0, B: 0 });
   const barAnim = useRef(new Animated.Value(50)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const socket = getSocket();
+
     const handleUpdate = (data: { score: number }) => {
       setScore(data.score);
       Animated.spring(barAnim, {
@@ -92,8 +144,18 @@ export default function RivalryTugOfWar() {
         Animated.timing(glowAnim, { toValue: 0, duration: 600, useNativeDriver: false }),
       ]).start();
     };
+
+    const handleLeaderboard = (data: { teamPulls: { A: number; B: number } }) => {
+      setTeamPulls(data.teamPulls);
+    };
+
     socket.on('tug_update', handleUpdate);
-    return () => { socket.off('tug_update', handleUpdate); };
+    socket.on('tug_leaderboard', handleLeaderboard);
+
+    return () => {
+      socket.off('tug_update', handleUpdate);
+      socket.off('tug_leaderboard', handleLeaderboard);
+    };
   }, []);
 
   const handlePull = (team: 'A' | 'B') => {
@@ -106,7 +168,6 @@ export default function RivalryTugOfWar() {
 
   const teamAWidth = barAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
   const teamBWidth = barAnim.interpolate({ inputRange: [0, 100], outputRange: ['100%', '0%'] });
-
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] });
 
   const aLeading = score > 55;
@@ -118,8 +179,14 @@ export default function RivalryTugOfWar() {
     : aLeading
     ? `🇦🇷 Argentina dominating! (${score}%)`
     : `🇧🇷 Brazil dominating! (${100 - score}%)`;
-
   const statusColor = tied ? '#94a3b8' : aLeading ? TEAM_A.color : TEAM_B.color;
+
+  const totalPulls = teamPulls.A + teamPulls.B;
+
+  const entries = [
+    { team: 'A' as const, ...TEAM_A, pulls: teamPulls.A },
+    { team: 'B' as const, ...TEAM_B, pulls: teamPulls.B },
+  ].sort((a, b) => b.pulls - a.pulls);
 
   return (
     <View style={styles.card}>
@@ -180,6 +247,28 @@ export default function RivalryTugOfWar() {
       </View>
 
       <Text style={styles.hint}>One pull per 500ms · fair play enforced server-side</Text>
+
+      {/* All-time leaderboard */}
+      <View style={styles.lbCard}>
+        <View style={styles.lbHeader}>
+          <Text style={styles.lbTitle}>🏆 All-Time Leaderboard</Text>
+          <Text style={styles.lbTotal}>{formatPulls(totalPulls)} total pulls</Text>
+        </View>
+        {entries.map((entry, i) => (
+          <LeaderboardRow
+            key={entry.team}
+            flag={entry.flag}
+            name={entry.name}
+            color={entry.color}
+            pulls={entry.pulls}
+            totalPulls={totalPulls}
+            rank={i + 1}
+          />
+        ))}
+        {totalPulls === 0 && (
+          <Text style={styles.lbEmpty}>Be the first to pull! Results persist forever.</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -341,5 +430,74 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
     color: '#334155',
     marginTop: -4,
+  },
+
+  /* ── All-time leaderboard ── */
+  lbCard: {
+    backgroundColor: '#080d18',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1e2d4a',
+    padding: 14,
+    gap: 10,
+  },
+  lbHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  lbTitle: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#f1f5f9',
+  },
+  lbTotal: {
+    fontSize: 10,
+    fontFamily: 'Poppins_400Regular',
+    color: '#475569',
+  },
+  lbRow: {
+    gap: 5,
+  },
+  lbMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  lbRank: {
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
+    color: '#f5a623',
+    width: 20,
+  },
+  lbFlag: {
+    fontSize: 16,
+  },
+  lbName: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    flex: 1,
+  },
+  lbPulls: {
+    fontSize: 11,
+    fontFamily: 'Poppins_500Medium',
+    color: '#94a3b8',
+  },
+  lbBarTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#1e2d4a',
+    overflow: 'hidden',
+  },
+  lbBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  lbEmpty: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#475569',
+    textAlign: 'center',
+    paddingVertical: 4,
   },
 });

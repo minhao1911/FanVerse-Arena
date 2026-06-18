@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const { initDb, getTugScore, saveTugScore, upsertUser, getUser } = require('./db');
+const { initDb, getTugScore, saveTugScore, getTeamPulls, flushTeamPullDeltas, upsertUser, getUser } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,7 +19,11 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/initial-data', (req, res) => {
-  res.json({ tugScore });
+  res.json({ tugScore, teamPulls: totalTeamPulls });
+});
+
+app.get('/api/tug-leaderboard', (req, res) => {
+  res.json({ teamPulls: totalTeamPulls });
 });
 
 app.get('/api/user/:id', async (req, res) => {
@@ -49,11 +53,14 @@ const connectedUsers = new Map();
 const tugPullTimestamps = new Map();
 const TUG_RATE_LIMIT_MS = 400;
 let tugScore = 50;
+let totalTeamPulls = { A: 0, B: 0 };
+let pendingPullDeltas = { A: 0, B: 0 };
 
 io.on('connection', (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
 
   socket.emit('tug_update', { score: tugScore });
+  socket.emit('tug_leaderboard', { teamPulls: totalTeamPulls });
 
   socket.on('tug_pull', (data) => {
     const now = Date.now();
@@ -61,12 +68,20 @@ io.on('connection', (socket) => {
     if (now - last < TUG_RATE_LIMIT_MS) return;
     tugPullTimestamps.set(socket.id, now);
 
-    if (data.team === 'A') {
+    const team = data.team;
+    if (team === 'A') {
       tugScore = Math.min(100, tugScore + 1);
-    } else if (data.team === 'B') {
+    } else if (team === 'B') {
       tugScore = Math.max(0, tugScore - 1);
+    } else {
+      return;
     }
+
+    totalTeamPulls[team] += 1;
+    pendingPullDeltas[team] += 1;
+
     io.emit('tug_update', { score: tugScore });
+    io.emit('tug_leaderboard', { teamPulls: { ...totalTeamPulls } });
   });
 
   socket.on('user:join', (data) => {
@@ -134,18 +149,22 @@ io.on('connection', (socket) => {
 setInterval(async () => {
   try {
     await saveTugScore(tugScore);
+    const deltas = { ...pendingPullDeltas };
+    pendingPullDeltas = { A: 0, B: 0 };
+    await flushTeamPullDeltas(deltas);
   } catch (err) {
-    console.error('[DB] Failed to persist tug score:', err.message);
+    console.error('[DB] Flush error:', err.message);
   }
 }, 5000);
 
 const PORT = process.env.PORT || 3001;
 
 initDb()
-  .then(() => getTugScore())
-  .then((saved) => {
-    tugScore = saved;
-    console.log(`[DB] Loaded tug score from DB: ${tugScore}`);
+  .then(() => Promise.all([getTugScore(), getTeamPulls()]))
+  .then(([savedScore, savedPulls]) => {
+    tugScore = savedScore;
+    totalTeamPulls = savedPulls;
+    console.log(`[DB] Loaded tug score: ${tugScore} | Pulls → Argentina: ${savedPulls.A.toLocaleString()} · Brazil: ${savedPulls.B.toLocaleString()}`);
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] Express + Socket.io running on port ${PORT}`);
     });
