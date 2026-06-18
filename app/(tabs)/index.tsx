@@ -7,6 +7,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { DebateCard } from '@/components/DebateCard';
+import RivalryTugOfWar from '@/components/RivalryTugOfWar';
 
 function XPBar({ xp, level }: { xp: number; level: number }) {
   const colors = useColors();
@@ -85,6 +86,8 @@ export default function HomeScreen() {
                 ))}
               </View>
             </LinearGradient>
+
+            <RivalryTugOfWar />
 
             {/* Quick Actions */}
             <View style={styles.quickActions}>

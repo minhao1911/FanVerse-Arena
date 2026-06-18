@@ -21,9 +21,21 @@ app.get('/health', (req, res) => {
 });
 
 const connectedUsers = new Map();
+let tugScore = 50;
 
 io.on('connection', (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
+
+  socket.emit('tug_update', { score: tugScore });
+
+  socket.on('tug_pull', (data) => {
+    if (data.team === 'A') {
+      tugScore = Math.min(100, tugScore + 1);
+    } else if (data.team === 'B') {
+      tugScore = Math.max(0, tugScore - 1);
+    }
+    io.emit('tug_update', { score: tugScore });
+  });
 
   socket.on('user:join', (data) => {
     connectedUsers.set(socket.id, data);
