@@ -45,6 +45,7 @@ export default function RootLayout() {
                   <Stack.Screen name="onboarding" options={{ headerShown: false }} />
                   <Stack.Screen name="create-group" options={{ headerShown: false, presentation: 'modal' }} />
                   <Stack.Screen name="create-debate" options={{ headerShown: false, presentation: 'modal' }} />
+                  <Stack.Screen name="match/[id]" options={{ headerShown: false }} />
                 </Stack>
                 <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
               </AppProvider>

@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'r
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { Prediction } from '@/context/AppContext';
 
@@ -118,6 +119,15 @@ export function PredictionCard({ prediction, onSubmit }: Props) {
           </View>
         )
       )}
+
+      <TouchableOpacity
+        style={[styles.detailsBtn, { borderColor: colors.border }]}
+        onPress={() => router.push(`/match/${prediction.id}` as any)}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.detailsBtnText, { color: colors.muted }]}>View Match Details</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.muted} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -244,5 +254,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
     fontWeight: '600' as const,
+  },
+  detailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  detailsBtnText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_500Medium',
+    fontWeight: '500' as const,
   },
 });

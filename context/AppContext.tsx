@@ -59,17 +59,33 @@ export interface LeaderboardEntry {
   level: number;
 }
 
+export interface MatchComment {
+  id: string;
+  matchId: string;
+  authorName: string;
+  authorTeam: string;
+  authorTeamFlag: string;
+  authorLevel: number;
+  text: string;
+  likes: number;
+  createdAt: string;
+  userLiked?: boolean;
+}
+
 interface AppContextValue {
   groups: Group[];
   debates: DebatePost[];
   predictions: Prediction[];
   leaderboard: LeaderboardEntry[];
+  comments: Record<string, MatchComment[]>;
   createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => Promise<void>;
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => void;
   addDebate: (debate: Omit<DebatePost, 'id' | 'createdAt' | 'upvotes' | 'downvotes' | 'commentCount'>) => void;
   voteDebate: (debateId: string, vote: 'up' | 'down') => void;
   submitPrediction: (predictionId: string, home: number, away: number) => void;
+  addComment: (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => void;
+  likeComment: (matchId: string, commentId: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -184,6 +200,26 @@ const SAMPLE_LEADERBOARD: LeaderboardEntry[] = [
   { rank: 8, userId: 'u8', username: 'OrangeLion', teamFlag: '🇳🇱', teamName: 'Netherlands', score: 7800, level: 15 },
 ];
 
+const SAMPLE_COMMENTS: Record<string, MatchComment[]> = {
+  p1: [
+    { id: 'c1', matchId: 'p1', authorName: 'SambaStar', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 16, text: "Brazil's front three is just unstoppable right now. Vinicius Jr alone will cause nightmares for the Argentina defence. Easy 2-0.", likes: 47, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
+    { id: 'c2', matchId: 'p1', authorName: 'LaAlbiceleste', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Argentina have been incredible since the World Cup. Martinez in goal, De Paul in midfield — this is a completely different team. Don't sleep on them.", likes: 39, createdAt: new Date(Date.now() - 5400000).toISOString(), userLiked: false },
+    { id: 'c3', matchId: 'p1', authorName: 'TacticalEye', authorTeam: 'France', authorTeamFlag: '🇫🇷', authorLevel: 18, text: "This is literally the El Clasico of international football. Both teams at peak form — I'm calling 2-2 draw after extra time drama.", likes: 62, createdAt: new Date(Date.now() - 3600000).toISOString(), userLiked: false },
+    { id: 'c4', matchId: 'p1', authorName: 'OracleFC', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 22, text: "Stats don't lie: Brazil win 52% of head-to-head meetings in competitive fixtures. Home advantage seals it.", likes: 28, createdAt: new Date(Date.now() - 1800000).toISOString(), userLiked: false },
+  ],
+  p2: [
+    { id: 'c5', matchId: 'p2', authorName: 'LesBleus', authorTeam: 'France', authorTeamFlag: '🇫🇷', authorLevel: 19, text: "France's midfield depth is genuinely frightening. Tchouaméni, Camavinga, Rabiot all fighting for spots. England won't cope.", likes: 54, createdAt: new Date(Date.now() - 9000000).toISOString(), userLiked: false },
+    { id: 'c6', matchId: 'p2', authorName: 'ThreeLions', authorTeam: 'England', authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', authorLevel: 18, text: "Bellingham is on another level this season. If he turns up, England can beat anyone. It's coming home, mark my words.", likes: 71, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
+    { id: 'c7', matchId: 'p2', authorName: 'StatGuru99', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 20, text: "Historical record: France lead this fixture 19-17 across all-time. But England at Wembley is a fortress — different story at home.", likes: 33, createdAt: new Date(Date.now() - 3600000).toISOString(), userLiked: false },
+  ],
+  p3: [
+    { id: 'c8', matchId: 'p3', authorName: 'DieManschaft', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 21, text: "Germany were absolutely clinical! Müller's movement, Wirtz's creativity — Nagelsmann has built something special here. Deserved 2-1.", likes: 88, createdAt: new Date(Date.now() - 172800000).toISOString(), userLiked: false },
+    { id: 'c9', matchId: 'p3', authorName: 'TikiTaka', authorTeam: 'Spain', authorTeamFlag: '🇪🇸', authorLevel: 23, text: "Spain dominated possession 64-36 and still lost. Football is cruel. Yamal was brilliant though — the future is in safe hands.", likes: 65, createdAt: new Date(Date.now() - 170000000).toISOString(), userLiked: false },
+    { id: 'c10', matchId: 'p3', authorName: 'BrazilKing', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 25, text: "Germany's press is unreal. Spain's build-up play was constantly disrupted. A tactical masterclass from Nagelsmann.", likes: 52, createdAt: new Date(Date.now() - 168000000).toISOString(), userLiked: false },
+    { id: 'c11', matchId: 'p3', authorName: 'ScoreProphet', authorTeam: 'Spain', authorTeamFlag: '🇪🇸', authorLevel: 19, text: "I predicted 2-1 Germany! Collected 450 XP on that one. Told everyone Germany's counter-press would be the difference.", likes: 41, createdAt: new Date(Date.now() - 165000000).toISOString(), userLiked: false },
+  ],
+};
+
 const SAMPLE_GROUPS: Group[] = [
   {
     id: 'g1',
@@ -236,6 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<Group[]>(SAMPLE_GROUPS);
   const [debates, setDebates] = useState<DebatePost[]>(SAMPLE_DEBATES);
   const [predictions, setPredictions] = useState<Prediction[]>(SAMPLE_PREDICTIONS);
+  const [comments, setComments] = useState<Record<string, MatchComment[]>>(SAMPLE_COMMENTS);
   const leaderboard = SAMPLE_LEADERBOARD;
 
   useEffect(() => {
@@ -317,10 +354,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ));
   };
 
+  const addComment = (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => {
+    const newComment: MatchComment = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      matchId,
+      authorName,
+      authorTeam,
+      authorTeamFlag,
+      authorLevel,
+      text,
+      likes: 0,
+      createdAt: new Date().toISOString(),
+      userLiked: false,
+    };
+    setComments(prev => ({
+      ...prev,
+      [matchId]: [newComment, ...(prev[matchId] ?? [])],
+    }));
+  };
+
+  const likeComment = (matchId: string, commentId: string) => {
+    setComments(prev => ({
+      ...prev,
+      [matchId]: (prev[matchId] ?? []).map(c =>
+        c.id === commentId
+          ? { ...c, likes: c.userLiked ? c.likes - 1 : c.likes + 1, userLiked: !c.userLiked }
+          : c
+      ),
+    }));
+  };
+
   const value = useMemo(() => ({
-    groups, debates, predictions, leaderboard,
-    createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction,
-  }), [groups, debates, predictions]);
+    groups, debates, predictions, leaderboard, comments,
+    createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction, addComment, likeComment,
+  }), [groups, debates, predictions, comments]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
