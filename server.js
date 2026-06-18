@@ -62,6 +62,11 @@ io.on('connection', (socket) => {
     console.log(`[Socket] Notification broadcast: ${data.message}`);
   });
 
+  socket.on('send_chat_message', (data) => {
+    socket.broadcast.emit('receive_chat_message', data);
+    console.log(`[Chat] Room ${data.roomId} — ${data.authorName}: ${data.text}`);
+  });
+
   socket.on('disconnect', () => {
     connectedUsers.delete(socket.id);
     io.emit('presence:update', { onlineCount: connectedUsers.size });

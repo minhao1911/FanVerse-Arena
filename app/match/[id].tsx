@@ -18,6 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import type { MatchComment } from '@/context/AppContext';
+import LiveChatRoom from '@/components/LiveChatRoom';
 
 interface MatchMeta {
   venue: string;
@@ -134,6 +135,7 @@ export default function MatchDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { predictions, submitPrediction, comments, addComment } = useApp();
   const { user } = useAuth();
+  const [screenMode, setScreenMode] = useState<'overview' | 'warroom'>('overview');
   const [commentText, setCommentText] = useState('');
   const [homeInput, setHomeInput] = useState('');
   const [awayInput, setAwayInput] = useState('');
@@ -232,9 +234,40 @@ export default function MatchDetailScreen() {
             <Text style={[styles.heroTeamName, { color: colors.foreground }]}>{prediction.awayTeam}</Text>
           </View>
         </View>
+
+        {/* Mode toggle */}
+        <View style={[styles.modeTabs, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.modeTab, screenMode === 'overview' && { backgroundColor: colors.card }]}
+            onPress={() => setScreenMode('overview')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="stats-chart" size={14} color={screenMode === 'overview' ? colors.foreground : colors.muted} />
+            <Text style={[styles.modeTabText, { color: screenMode === 'overview' ? colors.foreground : colors.muted }]}>
+              Overview
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeTab, screenMode === 'warroom' && { backgroundColor: colors.primary + '22' }]}
+            onPress={() => setScreenMode('warroom')}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: 13 }}>⚡</Text>
+            <Text style={[styles.modeTabText, { color: screenMode === 'warroom' ? colors.primary : colors.muted }]}>
+              War Room
+            </Text>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
-      <ScrollView
+      {screenMode === 'warroom' ? (
+        <LiveChatRoom
+          roomId={prediction.id}
+          roomName={`${prediction.homeTeam} vs ${prediction.awayTeam}`}
+        />
+      ) : null}
+
+      {screenMode === 'overview' && <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
       >
@@ -401,37 +434,39 @@ export default function MatchDetailScreen() {
             <CommentItem key={comment.id} comment={comment} matchId={prediction.id} />
           ))}
         </View>
-      </ScrollView>
+      </ScrollView>}
 
-      <View style={[
-        styles.commentInputBar,
-        {
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          paddingBottom: Platform.OS === 'web' ? 20 : insets.bottom + 8,
-        }
-      ]}>
-        <View style={[styles.commentInputWrap, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
-          <Text style={styles.userFlag}>{user?.teamFlag ?? '🌍'}</Text>
-          <TextInput
-            style={[styles.commentInput, { color: colors.foreground }]}
-            value={commentText}
-            onChangeText={setCommentText}
-            placeholder="Add to the match thread..."
-            placeholderTextColor={colors.muted}
-            multiline
-            maxLength={280}
-          />
+      {screenMode === 'overview' && (
+        <View style={[
+          styles.commentInputBar,
+          {
+            backgroundColor: colors.card,
+            borderTopColor: colors.border,
+            paddingBottom: Platform.OS === 'web' ? 20 : insets.bottom + 8,
+          }
+        ]}>
+          <View style={[styles.commentInputWrap, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+            <Text style={styles.userFlag}>{user?.teamFlag ?? '🌍'}</Text>
+            <TextInput
+              style={[styles.commentInput, { color: colors.foreground }]}
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Add to the match thread..."
+              placeholderTextColor={colors.muted}
+              multiline
+              maxLength={280}
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: commentText.trim() ? 1 : 0.4 }]}
+            onPress={handleSendComment}
+            disabled={!commentText.trim()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="send" size={18} color="#000" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: commentText.trim() ? 1 : 0.4 }]}
-          onPress={handleSendComment}
-          disabled={!commentText.trim()}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="send" size={18} color="#000" />
-        </TouchableOpacity>
-      </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -440,7 +475,28 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   heroGradient: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 16,
+  },
+  modeTabs: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    marginTop: 12,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  modeTabText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
+    fontWeight: '600' as const,
   },
   backBtn: {
     flexDirection: 'row',
