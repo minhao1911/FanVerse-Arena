@@ -12,7 +12,7 @@ const FILTERS = ['All', 'Hot', 'New', 'Top'];
 export default function ArenaScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { debates, voteDebate } = useApp();
+  const { debates, voteDebate, sendRealTimeNotification } = useApp();
   const [activeFilter, setActiveFilter] = useState('All');
 
   const sorted = [...debates].sort((a, b) => {
@@ -60,7 +60,20 @@ export default function ArenaScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.list, { paddingBottom: 20 }]}
         renderItem={({ item }) => (
-          <DebateCard debate={item} onVote={voteDebate} onPress={() => {}} />
+          <DebateCard
+            debate={item}
+            onVote={(debateId, vote) => {
+              voteDebate(debateId, vote);
+              sendRealTimeNotification({
+                type: 'vote',
+                message: `Someone ${vote === 'up' ? '👍 upvoted' : '👎 downvoted'}: "${item.title}"`,
+                fromTeamFlag: item.authorTeamFlag,
+                fromUser: item.authorName,
+                targetId: debateId,
+              });
+            }}
+            onPress={() => {}}
+          />
         )}
         ListEmptyComponent={() => (
           <View style={styles.empty}>

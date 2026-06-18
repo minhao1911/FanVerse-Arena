@@ -2,6 +2,17 @@ import { createContext, useContext, useState, useEffect, useMemo, ReactNode } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSocket, emitEvent } from '../utils/socket';
 
+export interface AppNotification {
+  id: string;
+  type: 'vote' | 'debate' | 'prediction' | 'comment' | 'group';
+  message: string;
+  fromUser?: string;
+  fromTeamFlag?: string;
+  targetId?: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -80,6 +91,10 @@ interface AppContextValue {
   leaderboard: LeaderboardEntry[];
   comments: Record<string, MatchComment[]>;
   onlineCount: number;
+  notifications: AppNotification[];
+  unreadCount: number;
+  markAllRead: () => void;
+  sendRealTimeNotification: (data: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => void;
   createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => Promise<void>;
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => void;
@@ -276,7 +291,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [predictions, setPredictions] = useState<Prediction[]>(SAMPLE_PREDICTIONS);
   const [comments, setComments] = useState<Record<string, MatchComment[]>>(SAMPLE_COMMENTS);
   const [onlineCount, setOnlineCount] = useState(0);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const leaderboard = SAMPLE_LEADERBOARD;
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const markAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const sendRealTimeNotification = (data: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => {
+    const notification: AppNotification = {
+      ...data,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    emitEvent('trigger_notification', notification);
+  };
 
   useEffect(() => {
     AsyncStorage.getItem(GROUPS_KEY).then((data) => {
@@ -338,6 +370,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ));
     });
 
+    socket.on('receive_notification', (notification: AppNotification) => {
+      setNotifications(prev => {
+        if (prev.find(n => n.id === notification.id)) return prev;
+        return [{ ...notification, read: false }, ...prev];
+      });
+    });
+
     return () => {
       socket.off('presence:update');
       socket.off('debate:new');
@@ -345,6 +384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('comment:new');
       socket.off('comment:like');
       socket.off('group:memberUpdate');
+      socket.off('receive_notification');
     };
   }, []);
 
@@ -458,8 +498,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     groups, debates, predictions, leaderboard, comments, onlineCount,
+    notifications, unreadCount, markAllRead, sendRealTimeNotification,
     createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction, addComment, likeComment,
-  }), [groups, debates, predictions, comments, onlineCount]);
+  }), [groups, debates, predictions, comments, onlineCount, notifications]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
