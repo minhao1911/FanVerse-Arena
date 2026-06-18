@@ -13,6 +13,14 @@ function TabIcon({ name, focused, color }: { name: any; focused: boolean; color:
   );
 }
 
+function WCTabIcon({ focused, color }: { focused: boolean; color: string }) {
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapWC]}>
+      <Text style={[styles.wcEmoji, { opacity: focused ? 1 : 0.6 }]}>⚽</Text>
+    </View>
+  );
+}
+
 function NotifIcon({ focused, color }: { focused: boolean; color: string }) {
   const { unreadCount } = useApp();
   return (
@@ -61,9 +69,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="worldcup"
+        options={{
+          tabBarIcon: ({ focused, color }) => <WCTabIcon focused={focused} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="predict"
         options={{
-          tabBarIcon: ({ focused, color }) => <TabIcon name={focused ? 'trophy' : 'trophy-outline'} focused={focused} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -104,6 +118,12 @@ const styles = StyleSheet.create({
   },
   iconWrapActive: {
     backgroundColor: 'rgba(245, 166, 35, 0.15)',
+  },
+  iconWrapWC: {
+    backgroundColor: 'rgba(34, 197, 94, 0.18)',
+  },
+  wcEmoji: {
+    fontSize: 22,
   },
   badgeWrap: {
     position: 'absolute',

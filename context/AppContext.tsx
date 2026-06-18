@@ -2,10 +2,11 @@ import { createContext, useContext, useState, useEffect, useMemo, ReactNode } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSocket, emitEvent } from '../utils/socket';
 import { fetchInitialData } from '../utils/api';
+import type { WCMatch } from '../data/worldcup2026';
 
 export interface AppNotification {
   id: string;
-  type: 'vote' | 'debate' | 'prediction' | 'comment' | 'group';
+  type: 'vote' | 'debate' | 'prediction' | 'comment' | 'group' | 'bet_won' | 'bet_lost';
   message: string;
   fromUser?: string;
   fromTeamFlag?: string;
@@ -45,6 +46,7 @@ export interface DebatePost {
   tags: string[];
   createdAt: string;
   userVote?: 'up' | 'down' | null;
+  matchId?: string;
 }
 
 export interface Prediction {
@@ -85,6 +87,22 @@ export interface MatchComment {
   userLiked?: boolean;
 }
 
+export type BetType = 'home' | 'draw' | 'away';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void';
+
+export interface WCBet {
+  id: string;
+  matchId: string;
+  matchLabel: string;
+  betType: BetType;
+  amount: number;
+  odds: number;
+  potentialWin: number;
+  status: BetStatus;
+  placedAt: string;
+  settledAt?: string;
+}
+
 interface AppContextValue {
   groups: Group[];
   debates: DebatePost[];
@@ -94,6 +112,8 @@ interface AppContextValue {
   onlineCount: number;
   notifications: AppNotification[];
   unreadCount: number;
+  coins: number;
+  bets: WCBet[];
   markAllRead: () => void;
   sendRealTimeNotification: (data: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => void;
   createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'memberCount'>) => Promise<void>;
@@ -104,12 +124,17 @@ interface AppContextValue {
   submitPrediction: (predictionId: string, home: number, away: number) => void;
   addComment: (matchId: string, authorName: string, authorTeam: string, authorTeamFlag: string, authorLevel: number, text: string) => void;
   likeComment: (matchId: string, commentId: string) => void;
+  placeBet: (match: WCMatch, betType: BetType, amount: number) => boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 const GROUPS_KEY = 'fanverse_groups';
 const DEBATES_KEY = 'fanverse_debates';
+const COINS_KEY = 'fanverse_coins';
+const BETS_KEY = 'fanverse_bets';
+
+const STARTING_COINS = 1000;
 
 const SAMPLE_DEBATES: DebatePost[] = [
   {
@@ -119,46 +144,99 @@ const SAMPLE_DEBATES: DebatePost[] = [
     authorTeam: 'Brazil',
     authorTeamFlag: '🇧🇷',
     authorLevel: 12,
-    title: 'Brazil vs Argentina: Who has the better squad depth?',
-    content: 'Looking at the current form and bench strength, Brazil clearly has the edge with multiple world-class players in every position.',
-    upvotes: 247,
+    title: '🇧🇷 Brazil look UNSTOPPABLE at WC 2026 — 3-0 in their opener!',
+    content: 'Vinicius Jr with 2 goals and a direct assist in the first game. The Seleção have never looked this clinical. Lamine Yamal who?',
+    upvotes: 847,
     downvotes: 89,
-    commentCount: 143,
-    tags: ['Brazil', 'Argentina', 'CONMEBOL'],
+    commentCount: 243,
+    tags: ['Brazil', 'WorldCup2026', 'HotTake'],
     createdAt: new Date(Date.now() - 3600000).toISOString(),
     userVote: null,
+    matchId: 'b1',
   },
   {
     id: 'd2',
     authorId: 'u2',
-    authorName: 'EaglesFan99',
-    authorTeam: 'Germany',
-    authorTeamFlag: '🇩🇪',
-    authorLevel: 8,
-    title: "Germany's pressing game is unmatched in Euro 2024",
-    content: "The high press system Nagelsmann implemented has transformed this squad. No team in Europe can match their intensity.",
-    upvotes: 312,
-    downvotes: 54,
-    commentCount: 201,
-    tags: ['Germany', 'Euro2024', 'Tactics'],
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
+    authorName: 'ArgentinaUltra',
+    authorTeam: 'Argentina',
+    authorTeamFlag: '🇦🇷',
+    authorLevel: 19,
+    title: '🇦🇷 USA holding Argentina 1-1 — biggest SHOCK at WC2026?',
+    content: "I cannot believe this is happening. Messi's boys being held at home by the USA. Christian Pulisic is genuinely world class. This group is chaos.",
+    upvotes: 1240,
+    downvotes: 340,
+    commentCount: 512,
+    tags: ['Argentina', 'USA', 'WorldCup2026', 'Upset'],
+    createdAt: new Date(Date.now() - 1800000).toISOString(),
     userVote: null,
+    matchId: 'a3',
   },
   {
     id: 'd3',
     authorId: 'u3',
-    authorName: 'LionsFan',
+    authorName: 'ThreeLions99',
     authorTeam: 'England',
     authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-    authorLevel: 5,
-    title: 'England finally has a world-class goalkeeper generation',
-    content: 'With Pickford, Ramsdale, and Flekken all competing for the starting spot, England has never had such depth in goal.',
-    upvotes: 178,
+    authorLevel: 15,
+    title: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 England vs Senegal — can the lions finally step up?',
+    content: "England are STILL drawing 0-0 vs Senegal. Bellingham is invisible. Saka keeps getting doubled. If they don't score soon, group qualification gets messy.",
+    upvotes: 678,
+    downvotes: 122,
+    commentCount: 301,
+    tags: ['England', 'Senegal', 'WorldCup2026'],
+    createdAt: new Date(Date.now() - 900000).toISOString(),
+    userVote: null,
+    matchId: 'd3',
+  },
+  {
+    id: 'd4',
+    authorId: 'u4',
+    authorName: 'GermanMachine',
+    authorTeam: 'Germany',
+    authorTeamFlag: '🇩🇪',
+    authorLevel: 21,
+    title: '🇩🇪 Germany 4-0 Iran — Nagelsmann has BUILT something special',
+    content: 'Four different scorers. Complete tactical dominance. Wirtz, Musiala, Havertz, Kroos. Germany look like genuine contenders for the trophy this time.',
+    upvotes: 534,
     downvotes: 67,
-    commentCount: 89,
-    tags: ['England', 'Goalkeeper', 'WorldClass'],
+    commentCount: 189,
+    tags: ['Germany', 'WorldCup2026', 'Tactics'],
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+    userVote: null,
+  },
+  {
+    id: 'd5',
+    authorId: 'u5',
+    authorName: 'FrenchFan',
+    authorTeam: 'France',
+    authorTeamFlag: '🇫🇷',
+    authorLevel: 17,
+    title: '🇫🇷 France vs Belgium INCOMING — the match of the group stage?',
+    content: "Two WC winners, two Golden Ball contenders, one group. Mbappé vs De Bruyne. Camavinga vs Tielemans. This could be the greatest group stage match in WC history.",
+    upvotes: 923,
+    downvotes: 101,
+    commentCount: 421,
+    tags: ['France', 'Belgium', 'WorldCup2026'],
     createdAt: new Date(Date.now() - 10800000).toISOString(),
     userVote: null,
+    matchId: 'c3',
+  },
+  {
+    id: 'd6',
+    authorId: 'u6',
+    authorName: 'IbericaFan',
+    authorTeam: 'Portugal',
+    authorTeamFlag: '🇵🇹',
+    authorLevel: 14,
+    title: '🇵🇹 Portugal vs 🇪🇸 Spain — Ronaldo vs Yamal, who wins the Iberian Derby?',
+    content: "Spain drew their opener, Portugal won 4-1. Ronaldo has 2 goals already. Yamal looked shaky. Lisbon vs Madrid rivalry about to play out on the biggest stage.",
+    upvotes: 1567,
+    downvotes: 234,
+    commentCount: 678,
+    tags: ['Portugal', 'Spain', 'WorldCup2026', 'IberianDerby'],
+    createdAt: new Date(Date.now() - 14400000).toISOString(),
+    userVote: null,
+    matchId: 'f3',
   },
 ];
 
@@ -222,19 +300,19 @@ const SAMPLE_COMMENTS: Record<string, MatchComment[]> = {
   p1: [
     { id: 'c1', matchId: 'p1', authorName: 'SambaStar', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 16, text: "Brazil's front three is just unstoppable right now. Vinicius Jr alone will cause nightmares for the Argentina defence. Easy 2-0.", likes: 47, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
     { id: 'c2', matchId: 'p1', authorName: 'LaAlbiceleste', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Argentina have been incredible since the World Cup. Martinez in goal, De Paul in midfield — this is a completely different team. Don't sleep on them.", likes: 39, createdAt: new Date(Date.now() - 5400000).toISOString(), userLiked: false },
-    { id: 'c3', matchId: 'p1', authorName: 'TacticalEye', authorTeam: 'France', authorTeamFlag: '🇫🇷', authorLevel: 18, text: "This is literally the El Clasico of international football. Both teams at peak form — I'm calling 2-2 draw after extra time drama.", likes: 62, createdAt: new Date(Date.now() - 3600000).toISOString(), userLiked: false },
-    { id: 'c4', matchId: 'p1', authorName: 'OracleFC', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 22, text: "Stats don't lie: Brazil win 52% of head-to-head meetings in competitive fixtures. Home advantage seals it.", likes: 28, createdAt: new Date(Date.now() - 1800000).toISOString(), userLiked: false },
   ],
-  p2: [
-    { id: 'c5', matchId: 'p2', authorName: 'LesBleus', authorTeam: 'France', authorTeamFlag: '🇫🇷', authorLevel: 19, text: "France's midfield depth is genuinely frightening. Tchouaméni, Camavinga, Rabiot all fighting for spots. England won't cope.", likes: 54, createdAt: new Date(Date.now() - 9000000).toISOString(), userLiked: false },
-    { id: 'c6', matchId: 'p2', authorName: 'ThreeLions', authorTeam: 'England', authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', authorLevel: 18, text: "Bellingham is on another level this season. If he turns up, England can beat anyone. It's coming home, mark my words.", likes: 71, createdAt: new Date(Date.now() - 7200000).toISOString(), userLiked: false },
-    { id: 'c7', matchId: 'p2', authorName: 'StatGuru99', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 20, text: "Historical record: France lead this fixture 19-17 across all-time. But England at Wembley is a fortress — different story at home.", likes: 33, createdAt: new Date(Date.now() - 3600000).toISOString(), userLiked: false },
+  a3: [
+    { id: 'wc1', matchId: 'a3', authorName: 'PulisicFan', authorTeam: 'USA', authorTeamFlag: '🇺🇸', authorLevel: 11, text: "PULISIC IS WORLD CLASS. USA holding Argentina 1-1 at the World Cup. This is history being made.", likes: 234, createdAt: new Date(Date.now() - 1200000).toISOString(), userLiked: false },
+    { id: 'wc2', matchId: 'a3', authorName: 'ArgentinaUltra', authorTeam: 'Argentina', authorTeamFlag: '🇦🇷', authorLevel: 19, text: "Messi WILL score in the second half. He always comes up big. Don't panic yet.", likes: 156, createdAt: new Date(Date.now() - 800000).toISOString(), userLiked: false },
+    { id: 'wc3', matchId: 'a3', authorName: 'NeutralObserver', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 14, text: "This is the best advertisement for the 48-team World Cup. More teams, more upsets, more drama. AMAZING.", likes: 89, createdAt: new Date(Date.now() - 400000).toISOString(), userLiked: false },
   ],
-  p3: [
-    { id: 'c8', matchId: 'p3', authorName: 'DieManschaft', authorTeam: 'Germany', authorTeamFlag: '🇩🇪', authorLevel: 21, text: "Germany were absolutely clinical! Müller's movement, Wirtz's creativity — Nagelsmann has built something special here. Deserved 2-1.", likes: 88, createdAt: new Date(Date.now() - 172800000).toISOString(), userLiked: false },
-    { id: 'c9', matchId: 'p3', authorName: 'TikiTaka', authorTeam: 'Spain', authorTeamFlag: '🇪🇸', authorLevel: 23, text: "Spain dominated possession 64-36 and still lost. Football is cruel. Yamal was brilliant though — the future is in safe hands.", likes: 65, createdAt: new Date(Date.now() - 170000000).toISOString(), userLiked: false },
-    { id: 'c10', matchId: 'p3', authorName: 'BrazilKing', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 25, text: "Germany's press is unreal. Spain's build-up play was constantly disrupted. A tactical masterclass from Nagelsmann.", likes: 52, createdAt: new Date(Date.now() - 168000000).toISOString(), userLiked: false },
-    { id: 'c11', matchId: 'p3', authorName: 'ScoreProphet', authorTeam: 'Spain', authorTeamFlag: '🇪🇸', authorLevel: 19, text: "I predicted 2-1 Germany! Collected 450 XP on that one. Told everyone Germany's counter-press would be the difference.", likes: 41, createdAt: new Date(Date.now() - 165000000).toISOString(), userLiked: false },
+  b3: [
+    { id: 'wc4', matchId: 'b3', authorName: 'SambaStar2', authorTeam: 'Brazil', authorTeamFlag: '🇧🇷', authorLevel: 20, text: "Rodrygo coming off the bench and scoring immediately. Brazil's squad depth is insane. 2-1!", likes: 187, createdAt: new Date(Date.now() - 2000000).toISOString(), userLiked: false },
+    { id: 'wc5', matchId: 'b3', authorName: 'ColombiaFan', authorTeam: 'Colombia', authorTeamFlag: '🇨🇴', authorLevel: 13, text: "Colombia are giving Brazil a proper game here. Díaz has been phenomenal. Not going down without a fight!", likes: 124, createdAt: new Date(Date.now() - 1500000).toISOString(), userLiked: false },
+  ],
+  d3: [
+    { id: 'wc6', matchId: 'd3', authorName: 'ThreeLions', authorTeam: 'England', authorTeamFlag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', authorLevel: 18, text: "Bellingham NEEDS to wake up. Saka is trying but getting doubled. We have to break this down!", likes: 312, createdAt: new Date(Date.now() - 600000).toISOString(), userLiked: false },
+    { id: 'wc7', matchId: 'd3', authorName: 'LionsDen99', authorTeam: 'Senegal', authorTeamFlag: '🇸🇳', authorLevel: 16, text: "Senegal's defensive shape is absolutely immaculate. Édouard Mendy has been a wall. Holding for the 3 points!", likes: 198, createdAt: new Date(Date.now() - 300000).toISOString(), userLiked: false },
   ],
 };
 
@@ -293,6 +371,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [comments, setComments] = useState<Record<string, MatchComment[]>>(SAMPLE_COMMENTS);
   const [onlineCount, setOnlineCount] = useState(0);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [coins, setCoins] = useState<number>(STARTING_COINS);
+  const [bets, setBets] = useState<WCBet[]>([]);
   const leaderboard = SAMPLE_LEADERBOARD;
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -324,12 +404,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
     });
+
     AsyncStorage.getItem(DEBATES_KEY).then((data) => {
       if (data) {
         try {
           const saved = JSON.parse(data) as DebatePost[];
           setDebates([...SAMPLE_DEBATES, ...saved.filter(d => !SAMPLE_DEBATES.find(s => s.id === d.id))]);
         } catch {}
+      }
+    });
+
+    AsyncStorage.getItem(COINS_KEY).then((data) => {
+      if (data) {
+        try { setCoins(JSON.parse(data)); } catch {}
+      } else {
+        AsyncStorage.setItem(COINS_KEY, JSON.stringify(STARTING_COINS));
+      }
+    });
+
+    AsyncStorage.getItem(BETS_KEY).then((data) => {
+      if (data) {
+        try { setBets(JSON.parse(data)); } catch {}
       }
     });
 
@@ -501,11 +596,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const placeBet = (match: WCMatch, betType: BetType, amount: number): boolean => {
+    if (amount <= 0 || amount > coins) return false;
+    const alreadyBet = bets.find(b => b.matchId === match.id && b.status === 'pending');
+    if (alreadyBet) return false;
+    const odds = betType === 'home' ? match.odds.home : betType === 'draw' ? match.odds.draw : match.odds.away;
+    const newBet: WCBet = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      matchId: match.id,
+      matchLabel: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+      betType,
+      amount,
+      odds,
+      potentialWin: Math.round(amount * odds),
+      status: 'pending',
+      placedAt: new Date().toISOString(),
+    };
+    const newCoins = coins - amount;
+    const newBets = [newBet, ...bets];
+    setCoins(newCoins);
+    setBets(newBets);
+    AsyncStorage.setItem(COINS_KEY, JSON.stringify(newCoins));
+    AsyncStorage.setItem(BETS_KEY, JSON.stringify(newBets));
+    emitEvent('prediction:submit', { matchId: match.id, betType, amount });
+    return true;
+  };
+
   const value = useMemo(() => ({
     groups, debates, predictions, leaderboard, comments, onlineCount,
-    notifications, unreadCount, markAllRead, sendRealTimeNotification,
-    createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction, addComment, likeComment,
-  }), [groups, debates, predictions, comments, onlineCount, notifications]);
+    notifications, unreadCount, coins, bets,
+    markAllRead, sendRealTimeNotification,
+    createGroup, joinGroup, leaveGroup, addDebate, voteDebate, submitPrediction,
+    addComment, likeComment, placeBet,
+  }), [groups, debates, predictions, comments, onlineCount, notifications, coins, bets]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
